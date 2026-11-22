@@ -4,8 +4,7 @@
 
 **Chat with your own files using a local AI — private, offline, no cloud.**
 
-[![CI](https://github.com/natancabraldev/llamafile-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/natancabraldev/llamafile-brain/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/natancabraldev/llamafile-brain?display_name=tag)](https://github.com/natancabraldev/llamafile-brain/releases)
+[![Release](https://img.shields.io/github/v/release/natancabral/llamafile-brain?display_name=tag)](https://github.com/natancabral/llamafile-brain/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/Linux%20%C2%B7%20Windows%20%C2%B7%20macOS-informational)
 
@@ -68,7 +67,7 @@ Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 📥 Download
 
-Get the installer for your platform from the [**Releases**](https://github.com/natancabraldev/llamafile-brain/releases) page.
+Get the installer for your platform from the [**Releases**](https://github.com/natancabral/llamafile-brain/releases) page.
 
 | System | File | How to install |
 |---|---|---|
@@ -190,7 +189,7 @@ Memory is written **only** by these commands (never by the model) and exported t
 Requirements: **Node 22.12+** (the app itself runs on Electron's own Node; this is for the scripts and tests). Works with **npm** or **yarn** (classic 1.x or 2+; for Yarn 2+ the included `.yarnrc.yml` already selects `node_modules`).
 
 ```bash
-git clone https://github.com/natancabraldev/llamafile-brain.git
+git clone https://github.com/natancabral/llamafile-brain.git
 cd llamafile-brain
 npm install             # or: yarn
 npm start               # or: yarn start      -> opens the app
@@ -280,7 +279,7 @@ Documentação em português: [README.pt.md](README.pt.md) · [docs/pt/](docs/pt
 - [ ] More interface languages
 - [ ] ARM packages for Linux and Windows
 
-Suggestions are welcome in the [issues](https://github.com/natancabraldev/llamafile-brain/issues).
+Suggestions are welcome in the [issues](https://github.com/natancabral/llamafile-brain/issues).
 
 ## 🤝 Contributing
 

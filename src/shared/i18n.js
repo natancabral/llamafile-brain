@@ -499,6 +499,49 @@
       '_({n} archivos más no se resumieron; sube el límite en Búsqueda.)_',
     ],
     'sum.overview': ['Overview', 'Visão geral', 'Visión general'],
+    // ---------------------------------------------------------------- shell / guide
+    'ui.settings': ['Settings', 'Configurações', 'Ajustes'],
+    'ui.close': ['Close', 'Fechar', 'Cerrar'],
+    'ui.guide': ['Step by step', 'Passo a passo', 'Paso a paso'],
+    'ui.theme.toLight': ['Switch to light (day) mode', 'Mudar para o modo claro (dia)', 'Cambiar a modo claro (día)'],
+    'ui.theme.toDark': ['Switch to dark (night) mode', 'Mudar para o modo escuro (noite)', 'Cambiar a modo oscuro (noche)'],
+    'guide.title': ['Let\'s get started! 4 easy steps', 'Vamos começar! 4 passos fáceis', '¡Vamos a empezar! 4 pasos fáciles'],
+    'guide.sub': [
+      'Do them in order. Each one turns into a green check when it is done.',
+      'Faça na ordem. Cada passo ganha um ✓ verde quando estiver pronto.',
+      'Hazlos en orden. Cada paso recibe un ✓ verde cuando esté listo.',
+    ],
+    'guide.done': ['Done', 'Pronto', 'Listo'],
+    'guide.todo': ['To do', 'Falta fazer', 'Pendiente'],
+    'guide.s1.t': ['Get a brain (a model file)', 'Pegue um cérebro (arquivo de modelo)', 'Consigue un cerebro (archivo de modelo)'],
+    'guide.s1.d': [
+      'Download a **.llamafile** file from the internet (for example Qwen3.5 2B). Then pick it in Settings.',
+      'Baixe um arquivo **.llamafile** da internet (por exemplo, Qwen3.5 2B). Depois escolha ele nas Configurações.',
+      'Descarga un archivo **.llamafile** de internet (por ejemplo, Qwen3.5 2B). Luego elígelo en Ajustes.',
+    ],
+    'guide.s1.b': ['Pick the file', 'Escolher o arquivo', 'Elegir el archivo'],
+    'guide.s2.t': ['Turn the brain on', 'Ligue o cérebro', 'Enciende el cerebro'],
+    'guide.s2.d': [
+      'Press **Start** on the Chat and Embeddings cards. Wait for the dots at the top to turn green.',
+      'Aperte **Iniciar** nos cartões Chat e Embeddings. Espere as bolinhas lá em cima ficarem verdes.',
+      'Pulsa **Iniciar** en las tarjetas Chat y Embeddings. Espera a que los puntos de arriba se pongan verdes.',
+    ],
+    'guide.s2.b': ['Open the servers', 'Abrir os servidores', 'Abrir los servidores'],
+    'guide.s3.t': ['Choose your folder', 'Escolha sua pasta', 'Elige tu carpeta'],
+    'guide.s3.d': [
+      'Pick the folder with the files you want to ask about (PDFs, Word, notes…).',
+      'Escolha a pasta com os arquivos sobre os quais você quer perguntar (PDF, Word, anotações…).',
+      'Elige la carpeta con los archivos sobre los que quieres preguntar (PDF, Word, notas…).',
+    ],
+    'guide.s3.b': ['Choose folder', 'Escolher pasta', 'Elegir carpeta'],
+    'guide.s4.t': ['Teach the brain', 'Ensine o cérebro', 'Enseña al cerebro'],
+    'guide.s4.d': [
+      'Press the button so the brain reads your files. Then just type a question below!',
+      'Aperte o botão para o cérebro ler seus arquivos. Depois é só digitar uma pergunta aqui embaixo!',
+      'Pulsa el botón para que el cerebro lea tus archivos. ¡Después escribe una pregunta abajo!',
+    ],
+    'guide.s4.b': ['Read my files', 'Ler meus arquivos', 'Leer mis archivos'],
+    'guide.ready': ['🎉 All set! Type your question in the box below.', '🎉 Tudo pronto! Digite sua pergunta na caixa abaixo.', '🎉 ¡Todo listo! Escribe tu pregunta en el cuadro de abajo.'],
   };
 
   let lang = 'en';

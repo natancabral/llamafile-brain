@@ -34,15 +34,15 @@
   },
   "author": {
     "name": "Natan Cabral",
-    "url": "https://github.com/natancabraldev"
+    "url": "https://github.com/natancabral"
   },
-  "homepage": "https://github.com/natancabraldev/llamafile-brain#readme",
+  "homepage": "https://github.com/natancabral/llamafile-brain#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/natancabraldev/llamafile-brain.git"
+    "url": "git+https://github.com/natancabral/llamafile-brain.git"
   },
   "bugs": {
-    "url": "https://github.com/natancabraldev/llamafile-brain/issues"
+    "url": "https://github.com/natancabral/llamafile-brain/issues"
   },
   "keywords": [
     "llamafile",
@@ -208,5 +208,6 @@
       "artifactName": "${name}-${version}-win-${arch}-portable.${ext}"
     }
   },
-  "desktopName": "llamafile-brain.desktop"
+  "desktopName": "llamafile-brain.desktop",
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

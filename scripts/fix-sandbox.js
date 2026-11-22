@@ -40,11 +40,22 @@ const run = (cmd, args) => {
 const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
 const sudo = (cmd, args) => (isRoot ? run(cmd, args) : run('sudo', [cmd, ...args]));
 
-sudo('chown', ['root:root', sandbox]);
-sudo('chmod', ['4755', sandbox]);
-console.log('chrome-sandbox permissions fixed.');
+// setuid is ignored on `nosuid` mounts (e.g. external drives under /run/media), so the sandbox can't work there.
+const onNosuid = (() => {
+  const r = spawnSync('findmnt', ['-n', '-o', 'OPTIONS', '-T', root], { encoding: 'utf8' });
+  return r.status === 0 && r.stdout.split(',').map((o) => o.trim()).includes('nosuid');
+})();
+
+if (onNosuid) {
+  console.warn('Project is on a nosuid mount: chrome-sandbox cannot work here, starting with --no-sandbox.');
+} else {
+  sudo('chown', ['root:root', sandbox]);
+  sudo('chmod', ['4755', sandbox]);
+  console.log('chrome-sandbox permissions fixed.');
+}
 
 if (process.argv.includes('--start')) {
-  const r = spawnSync(pm.bin, ['start'], { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
+  const args = onNosuid ? ['start', '--no-sandbox'] : ['start'];
+  const r = spawnSync(pm.bin, args, { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
   process.exit(r.status || 0);
 }

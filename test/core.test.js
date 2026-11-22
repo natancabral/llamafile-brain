@@ -232,3 +232,20 @@ test('llamafile: status is "starting" immediately after start() (no "stopped" fl
   await assert.rejects(p, /./);
   assert.strictEqual(srv.status, 'error'); // early failure does not stay stuck on "starting"
 });
+
+test('extractText reads .pptx (slides in order + speaker notes) and legacy .ppt', async () => {
+  const { zipSync, strToU8 } = require('fflate');
+  const { extractText } = require('../src/core/indexer');
+  const dir = tmpdir();
+  const slide = (t) => `<p:sld><a:p><a:r><a:t>${t}</a:t></a:r></a:p></p:sld>`;
+  const file = path.join(dir, 'deck.pptx');
+  fs.writeFileSync(file, zipSync({
+    'ppt/slides/slide10.xml': strToU8(slide('Tenth')),
+    'ppt/slides/slide2.xml': strToU8(slide('Second')),
+    'ppt/slides/slide1.xml': strToU8(slide('First')),
+    'ppt/notesSlides/notesSlide2.xml': strToU8(slide('say hello')),
+  }));
+  const text = await extractText(file);
+  assert.ok(text.indexOf('First') < text.indexOf('Second') && text.indexOf('Second') < text.indexOf('Tenth'));
+  assert.match(text, /Second\n\nNotes: say hello/);
+});

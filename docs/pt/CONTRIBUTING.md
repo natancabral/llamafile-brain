@@ -9,7 +9,7 @@ Obrigado por querer ajudar! Qualquer contribuição é bem-vinda: correções, f
 Requisitos: **Node 20+** (22 recomendado) e Git.
 
 ```bash
-git clone https://github.com/natancabraldev/llamafile-brain.git
+git clone https://github.com/natancabral/llamafile-brain.git
 cd llamafile-brain
 npm install         # ou: yarn install (os scripts abaixo também rodam com `yarn <nome>`)
 npm start            # Linux: se reclamar do "SUID sandbox", use npm run start:linux ou npm run start:dev

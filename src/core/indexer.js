@@ -155,10 +155,18 @@ function extractSlides(file, ext) {
     if (!z['content.xml']) return '';
     return xmlText(strFromU8(z['content.xml']).replace(/<\/text:(p|h)>/g, '\n'));
   }
-  const z = unzipSync(fs.readFileSync(file), { filter: (f) => /^ppt\/slides\/slide\d+\.xml$/.test(f.name) });
+  // slides + speaker notes (notesSlideN.xml carries the same number as its slide)
+  const z = unzipSync(fs.readFileSync(file), { filter: (f) => /^ppt\/(slides\/slide|notesSlides\/notesSlide)\d+\.xml$/.test(f.name) });
+  const num = (n) => parseInt(n.match(/(\d+)\.xml$/)[1], 10);
+  const text = (n) => xmlText(strFromU8(z[n]).replace(/<\/a:p>/g, '\n')).trim();
+  const notes = new Map(Object.keys(z).filter((n) => n.startsWith('ppt/notesSlides/')).map((n) => [num(n), text(n)]));
   return Object.keys(z)
-    .sort((a, b) => parseInt(a.match(/(\d+)\.xml/)[1], 10) - parseInt(b.match(/(\d+)\.xml/)[1], 10))
-    .map((n, i) => `## Slide ${i + 1}\n${xmlText(strFromU8(z[n]).replace(/<\/a:p>/g, '\n'))}`)
+    .filter((n) => n.startsWith('ppt/slides/'))
+    .sort((a, b) => num(a) - num(b))
+    .map((n, i) => {
+      const note = notes.get(num(n));
+      return `## Slide ${i + 1}\n${text(n)}${note ? `\n\nNotes: ${note}` : ''}`;
+    })
     .join('\n\n');
 }
 

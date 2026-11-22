@@ -39,6 +39,7 @@ function applyI18n(root = document) {
   const flag = document.getElementById('lang-flag');
   if (flag) flag.dataset.flag = I18N.getLang();
   root.querySelectorAll('[data-i18n]').forEach((n) => richText(n, tr(n.dataset.i18n)));
+  root.querySelectorAll('[data-i18n-title]').forEach((n) => (n.title = n.ariaLabel = tr(n.dataset.i18nTitle)));
   root.querySelectorAll('[data-i18n-ph]').forEach((n) => (n.placeholder = tr(n.dataset.i18nPh)));
   document.documentElement.lang = I18N.getLang();
 }
@@ -59,6 +60,83 @@ function selectTab(name) {
   document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== name));
 }
 document.querySelectorAll('#tabs button').forEach((b) => (b.onclick = () => selectTab(b.dataset.tab)));
+
+// ---------------------------------------------------------------- settings window + theme
+const modal = $('modal');
+function openSettings(tab) {
+  if (tab) selectTab(tab);
+  modal.classList.remove('hidden');
+  $('modal-close').focus();
+}
+function closeSettings() {
+  modal.classList.add('hidden');
+  $('settings-btn').focus();
+}
+$('settings-btn').onclick = () => openSettings();
+$('modal-close').onclick = closeSettings;
+modal.addEventListener('mousedown', (e) => e.target === modal && closeSettings());
+document.addEventListener('keydown', (e) => e.key === 'Escape' && !modal.classList.contains('hidden') && closeSettings());
+
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $('theme-btn').title = $('theme-btn').ariaLabel = tr(t === 'light' ? 'ui.theme.toDark' : 'ui.theme.toLight');
+}
+function initTheme() {
+  let t = null;
+  try { t = localStorage.getItem('lfb-theme'); } catch {}
+  if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  applyTheme(t);
+}
+$('theme-btn').onclick = () => {
+  const t = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+  try { localStorage.setItem('lfb-theme', t); } catch {}
+  applyTheme(t);
+};
+initTheme();
+
+// ---------------------------------------------------------------- step-by-step guide
+function renderGuide() {
+  const g = $('guide');
+  if (!state) return;
+  const sv = state.servers || {};
+  const st = state.settings || {};
+  const chatCfg = st.chat || {};
+  const steps = [
+    { n: 1, done: sv.chat === 'running' || !!chatCfg.file || chatCfg.mode === 'external', open: () => openSettings('servers') },
+    { n: 2, done: sv.chat === 'running' && sv.embed === 'running', open: () => openSettings('servers') },
+    { n: 3, done: (st.folders || []).length > 0, open: async () => { renderFolders(await window.api.addFolder()); renderGuide(); } },
+    { n: 4, done: (lastStats?.chunks || 0) > 0, open: () => { openSettings('knowledge'); $('index-run').click(); } },
+  ];
+  const cur = steps.findIndex((x) => !x.done);
+  g.replaceChildren();
+  if (cur === -1) {
+    g.append(el('p', 'guide-ready', tr('guide.ready')));
+    g.classList.toggle('hidden', !guideForced);
+    return;
+  }
+  g.classList.remove('hidden');
+  g.append(el('h2', null, tr('guide.title')), el('p', 'sub', tr('guide.sub')));
+  steps.forEach((x, i) => {
+    const row = el('div', `step${x.done ? ' done' : ''}${i === cur ? ' current' : ''}`);
+    row.append(el('div', 'num', x.done ? '✓' : String(x.n)));
+    const txt = el('div', 'txt');
+    const d = el('span', 'd');
+    richText(d, tr(`guide.s${x.n}.d`));
+    txt.append(el('b', 't', tr(`guide.s${x.n}.t`)), d);
+    row.append(txt);
+    const b = el('button', i === cur ? 'primary' : null, x.done ? tr('guide.done') : tr(`guide.s${x.n}.b`));
+    b.onclick = x.open;
+    row.append(b);
+    g.append(row);
+  });
+}
+let guideForced = false;
+$('guide-btn').onclick = () => {
+  guideForced = true;
+  renderGuide();
+  $('guide').classList.remove('hidden');
+  $('messages').scrollTop = 0;
+};
 
 // ---------------------------------------------------------------- settings <-> inputs (data-s="a.b.c")
 const getPath = (obj, p) => p.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
@@ -175,6 +253,13 @@ function setStatus(st) {
     const start = b.querySelector('.start');
     if (start) start.disabled = s === 'starting' || s === 'running'; // already starting/running: no need to click again
   });
+  for (const k of ['chat', 'embed']) {
+    const pill = $(`pill-${k}`);
+    const s = st[k] || 'stopped';
+    pill.className = `pill ${s}`;
+    pill.title = tr(`status.${['stopped', 'starting', 'running', 'error'].includes(s) ? s : 'stopped'}`);
+  }
+  renderGuide();
 }
 window.api.onServersStatus(setStatus);
 
@@ -183,12 +268,14 @@ let lastStats = null;
 function showStats(stats) {
   if (!stats) return;
   lastStats = stats;
+  renderGuide();
   $('db-path').value = stats.dbFile || '';
   $('stats').textContent = stats.error
     ? tr('kn.dbError', { e: stats.error })
     : tr('kn.stats', { files: stats.files, chunks: stats.chunks, memories: stats.memories });
 }
 function renderFolders(list) {
+  if (state) state.settings.folders = list;
   const ul = $('folders');
   ul.textContent = '';
   list.forEach((f) => {
@@ -363,7 +450,7 @@ function renderDeps(plan) {
   $('deps-status').textContent = missing.length
     ? tr('su.deps.count', { n: missing.length, mgr: plan.manager ? tr('su.deps.mgr', { m: plan.manager }) : tr('su.deps.noMgr') })
     : tr('su.deps.allOk');
-  state.lastPlan = plan;
+  if (state) state.lastPlan = plan;
 }
 async function refreshDeps() {
   try {
@@ -497,6 +584,8 @@ $('form').onsubmit = async (e) => {
   if (!q || busy || updateTokenCount()) return;
   $('input').value = '';
   updateTokenCount();
+  guideForced = false;
+  $('guide').classList.add('hidden');
   const u = el('div', 'msg user');
   u.textContent = q; // user text stays plain text
   messages.append(u);
@@ -553,6 +642,7 @@ async function init() {
 // Language selector: saves the setting (main process switches its own language too) and re-renders everything.
 function relocalize() {
   applyI18n();
+  applyTheme(document.documentElement.dataset.theme);
   setStatus(state.servers);
   if (lastStats) showStats(lastStats);
   updateVWeight();

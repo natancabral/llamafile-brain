@@ -37,7 +37,7 @@ svgToPng('assets/icon.svg', 1024, 'build/icon.png');
 const linuxSizes = [16, 24, 32, 48, 64, 96, 128, 256, 512, 1024];
 for (const s of linuxSizes) svgToPng('assets/icon.svg', s, `build/icons/${s}x${s}.png`);
 svgToPng('assets/icon.svg', 512, 'assets/icon-512.png');
-run('rsvg-convert', ['-w', '1200', 'assets/logo.svg', '-o', 'assets/logo.png']);
+run('rsvg-convert', ['-w', '920', 'assets/logo.svg', '-o', 'assets/logo.png']);
 
 // Windows
 run('convert', ['build/icon.png', '-define', 'icon:auto-resize=256,128,64,48,32,16', 'build/icon.ico']);

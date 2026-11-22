@@ -4,8 +4,7 @@
 
 **Converse com os seus próprios arquivos usando IA local — privado, offline e sem nuvem.**
 
-[![CI](https://github.com/natancabraldev/llamafile-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/natancabraldev/llamafile-brain/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/natancabraldev/llamafile-brain?display_name=tag)](https://github.com/natancabraldev/llamafile-brain/releases)
+[![Release](https://img.shields.io/github/v/release/natancabral/llamafile-brain?display_name=tag)](https://github.com/natancabral/llamafile-brain/releases)
 [![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue.svg)](LICENSE)
 ![Plataformas](https://img.shields.io/badge/Linux%20%C2%B7%20Windows%20%C2%B7%20macOS-informational)
 
@@ -68,7 +67,7 @@ Detalhes em [docs/ARCHITECTURE.md](docs/pt/ARCHITECTURE.md).
 
 ## 📥 Baixar
 
-Baixe o instalador da sua plataforma na página de [**Releases**](https://github.com/natancabraldev/llamafile-brain/releases).
+Baixe o instalador da sua plataforma na página de [**Releases**](https://github.com/natancabral/llamafile-brain/releases).
 
 | Sistema | Arquivo | Como instalar |
 |---|---|---|
@@ -190,7 +189,7 @@ A memória é gravada **apenas** por esses comandos (nunca pelo modelo) e export
 Requisitos: **Node 22.12+** (o app roda no Node do próprio Electron; isso vale para os scripts e testes). Funciona com **npm** ou **yarn** (clássico 1.x ou 2+; no Yarn 2+ o `.yarnrc.yml` incluído já escolhe `node_modules`).
 
 ```bash
-git clone https://github.com/natancabraldev/llamafile-brain.git
+git clone https://github.com/natancabral/llamafile-brain.git
 cd llamafile-brain
 npm install             # ou: yarn
 npm start               # ou: yarn start      -> abre o app
@@ -278,7 +277,7 @@ Detalhes (pré-requisitos, assinatura de código): [docs/RELEASING.md](docs/pt/R
 - [ ] Mais idiomas de interface
 - [ ] Pacotes ARM para Linux e Windows
 
-Sugestões são bem-vindas nas [issues](https://github.com/natancabraldev/llamafile-brain/issues).
+Sugestões são bem-vindas nas [issues](https://github.com/natancabral/llamafile-brain/issues).
 
 ## 🤝 Contribuindo
 

@@ -7,7 +7,7 @@ Thanks for wanting to help! Every contribution is welcome: fixes, new file forma
 Requirements: **Node 20+** (22 recommended) and Git.
 
 ```bash
-git clone https://github.com/natancabraldev/llamafile-brain.git
+git clone https://github.com/natancabral/llamafile-brain.git
 cd llamafile-brain
 npm install         # or: yarn install (the scripts below also run with `yarn <name>`)
 npm start            # Linux: if it complains about the "SUID sandbox", use npm run start:linux or npm run start:dev

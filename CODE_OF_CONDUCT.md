@@ -15,6 +15,6 @@ We want a respectful and welcoming space for everyone who uses and contributes t
 - Spam or out-of-context self-promotion.
 
 ## Enforcement
-Maintainers may edit or remove comments, issues and PRs that violate this code and block anyone who repeatedly breaks it. To report, open a [private security/contact advisory](https://github.com/natancabraldev/llamafile-brain/security/advisories/new) or contact the maintainer through their GitHub profile.
+Maintainers may edit or remove comments, issues and PRs that violate this code and block anyone who repeatedly breaks it. To report, open a [private security/contact advisory](https://github.com/natancabral/llamafile-brain/security/advisories/new) or contact the maintainer through their GitHub profile.
 
 Adapted from the [Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
