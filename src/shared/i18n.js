@@ -1,0 +1,531 @@
+'use strict';
+
+/**
+ * Translations (English default, Português, Español). Works in Node (require) and in the browser (window.I18N).
+ * Each entry is [en, pt, es]. Placeholders: {name}. Rich text in the UI supports `code`, **bold**, *italic* and [text](url).
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.I18N = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  const LANGS = { en: 'English', pt: 'Português', es: 'Español' };
+  const PROMPT_LANG = { en: 'English', pt: 'Brazilian Portuguese', es: 'Spanish' };
+  const ORDER = ['en', 'pt', 'es'];
+
+  const C = {
+    'md.copy': ['Copy', 'Copiar', 'Copiar'],
+    'md.copied': ['Copied!', 'Copiado!', '¡Copiado!'],
+
+    // ---------------------------------------------------------------- tabs / chrome
+    'tab.servers': ['Servers', 'Servidores', 'Servidores'],
+    'tab.knowledge': ['Knowledge', 'Conhecimento', 'Conocimiento'],
+    'tab.memory': ['Memory', 'Memória', 'Memoria'],
+    'tab.search': ['Search', 'Busca', 'Búsqueda'],
+    'tab.eval': ['Evaluation', 'Avaliação', 'Evaluación'],
+    'tab.setup': ['Setup', 'Instalação', 'Instalación'],
+    'tab.logs': ['Logs', 'Logs', 'Registros'],
+    'lang.label': ['Language', 'Idioma', 'Idioma'],
+
+    // ---------------------------------------------------------------- servers panel
+    'models.title': ['Where to download a model', 'Onde baixar o modelo', 'Dónde descargar el modelo'],
+    'models.p1': [
+      'Go to [huggingface.co/mozilla-ai/llamafile_0.10](https://huggingface.co/mozilla-ai/llamafile_0.10) and, in the table, download the file in the **llamafile** column (it ends in `.llamafile`).',
+      'Acesse [huggingface.co/mozilla-ai/llamafile_0.10](https://huggingface.co/mozilla-ai/llamafile_0.10) e, na tabela, baixe o arquivo da coluna **llamafile** (termina em `.llamafile`).',
+      'Entra en [huggingface.co/mozilla-ai/llamafile_0.10](https://huggingface.co/mozilla-ai/llamafile_0.10) y, en la tabla, descarga el archivo de la columna **llamafile** (termina en `.llamafile`).',
+    ],
+    'models.p2': [
+      'Pick a **Qwen**, **Ministral** or **Gemma** model. To start, **Qwen3.5 2B** (3.2 GB) is a good balance; with more memory, **gemma-4-E4B** or **Qwen3.5 9B**.',
+      'Escolha um modelo **Qwen**, **Ministral** ou **Gemma**. Para começar, **Qwen3.5 2B** (3,2 GB) é um bom equilíbrio; com mais memória, **gemma-4-E4B** ou **Qwen3.5 9B**.',
+      'Elige un modelo **Qwen**, **Ministral** o **Gemma**. Para empezar, **Qwen3.5 2B** (3,2 GB) es un buen equilibrio; con más memoria, **gemma-4-E4B** o **Qwen3.5 9B**.',
+    ],
+    'models.p3': [
+      'Then, under **Chat** below: *llamafile file* → **…** → **Start**.',
+      'Depois, em **Chat** abaixo: *Arquivo llamafile* → **…** → **Iniciar**.',
+      'Después, en **Chat** más abajo: *Archivo llamafile* → **…** → **Iniciar**.',
+    ],
+    'srv.chat.title': ['Chat', 'Chat', 'Chat'],
+    'srv.chat.hint': [
+      'Conversation model (e.g. Qwen 2B). Useful arguments: -c 8192 (context), -ngl 999 (GPU).',
+      'Modelo de conversa (ex.: Qwen 2B). Argumentos úteis: -c 8192 (contexto), -ngl 999 (GPU).',
+      'Modelo de conversación (p. ej., Qwen 2B). Argumentos útiles: -c 8192 (contexto), -ngl 999 (GPU).',
+    ],
+    'srv.embed.title': ['Embeddings', 'Embeddings', 'Embeddings'],
+    'srv.embed.hint': [
+      'Use a model built for embeddings (e.g. mxbai-embed-large, or embeddinggemma on Ollama). If you use a chat model here, add --pooling mean.',
+      'Use um modelo feito para embeddings (ex.: mxbai-embed-large, ou embeddinggemma no Ollama). Se usar um modelo de chat aqui, adicione --pooling mean.',
+      'Usa un modelo hecho para embeddings (p. ej., mxbai-embed-large, o embeddinggemma en Ollama). Si usas un modelo de chat aquí, añade --pooling mean.',
+    ],
+    'srv.rerank.title': ['Reranker (optional)', 'Reranker (opcional)', 'Reranker (opcional)'],
+    'srv.rerank.hint': [
+      'Reranker model (e.g. bge-reranker-v2-m3). Turn it on in Search → Reranker.',
+      'Modelo reranker (ex.: bge-reranker-v2-m3). Ative em Busca → Reranker.',
+      'Modelo reranker (p. ej., bge-reranker-v2-m3). Actívalo en Búsqueda → Reranker.',
+    ],
+    'srv.mode': ['Mode', 'Modo', 'Modo'],
+    'srv.spawn': ['Start llamafile', 'Iniciar llamafile', 'Iniciar llamafile'],
+    'srv.external': ['External server (Ollama, etc.)', 'Servidor externo (Ollama, etc.)', 'Servidor externo (Ollama, etc.)'],
+    'srv.file': ['llamafile file', 'Arquivo llamafile', 'Archivo llamafile'],
+    'srv.port': ['Port', 'Porta', 'Puerto'],
+    'srv.gpu': ['Processing (GPU)', 'Processamento (GPU)', 'Procesamiento (GPU)'],
+    'srv.gpu.auto': ['Automatic (llamafile decides)', 'Automático (o llamafile decide)', 'Automático (llamafile decide)'],
+    'srv.gpu.on': ['Use GPU (all layers)', 'Usar GPU (todas as camadas)', 'Usar GPU (todas las capas)'],
+    'srv.gpu.off': ['CPU only (no GPU)', 'Só CPU (sem GPU)', 'Solo CPU (sin GPU)'],
+    'srv.args': ['Extra arguments', 'Argumentos extras', 'Argumentos adicionales'],
+    'srv.url': ['URL', 'URL', 'URL'],
+    'srv.model': ['Model name', 'Nome do modelo', 'Nombre del modelo'],
+    'srv.start': ['Start', 'Iniciar', 'Iniciar'],
+    'srv.stop': ['Stop', 'Parar', 'Detener'],
+    'status.stopped': ['stopped', 'parado', 'detenido'],
+    'status.starting': ['starting…', 'iniciando…', 'iniciando…'],
+    'status.running': ['running', 'rodando', 'en marcha'],
+    'status.error': ['error', 'erro', 'error'],
+    'srv.startFail': ['Failed to start {title}: {e}', 'Falha ao iniciar {title}: {e}', 'No se pudo iniciar {title}: {e}'],
+
+    // ---------------------------------------------------------------- knowledge panel
+    'kn.sqlite.h': ['SQLite database', 'Banco SQLite', 'Base de datos SQLite'],
+    'kn.sqlite.help': [
+      'A single `brain.sqlite` file holds the index (keyword + vector search) and the memory.',
+      'Um único arquivo `brain.sqlite` guarda o índice (busca por palavras + vetores) e a memória.',
+      'Un único archivo `brain.sqlite` guarda el índice (búsqueda por palabras + vectores) y la memoria.',
+    ],
+    'kn.pick': ['Choose folder…', 'Escolher pasta…', 'Elegir carpeta…'],
+    'kn.default': ['Default', 'Padrão', 'Predeterminada'],
+    'kn.brain.h': ['Brain folder (your notes)', 'Pasta brain (suas notas)', 'Carpeta brain (tus notas)'],
+    'kn.brain.help': [
+      'Notes in `.md` that you write. They get priority in search, and the memory is exported to `memory.md` here.',
+      'Notas em `.md` que você escreve. Têm prioridade na busca, e a memória é exportada para `memory.md` aqui.',
+      'Notas en `.md` que tú escribes. Tienen prioridad en la búsqueda, y la memoria se exporta a `memory.md` aquí.',
+    ],
+    'kn.brain.none': ['(none)', '(nenhuma)', '(ninguna)'],
+    'kn.remove': ['Remove', 'Remover', 'Quitar'],
+    'kn.docs.h': ['Document folders', 'Pastas de documentos', 'Carpetas de documentos'],
+    'kn.docs.help': [
+      'Only what is in here can be read. Formats: text/code, PDF, Word, Excel, PowerPoint, ODT/ODS, SQL, JSON… (and images with OCR).',
+      'Só o que estiver aqui pode ser lido. Formatos: texto/código, PDF, Word, Excel, PowerPoint, ODT/ODS, SQL, JSON… (e imagens com OCR).',
+      'Solo se puede leer lo que esté aquí. Formatos: texto/código, PDF, Word, Excel, PowerPoint, ODT/ODS, SQL, JSON… (e imágenes con OCR).',
+    ],
+    'kn.add': ['+ Add folder', '+ Adicionar pasta', '+ Añadir carpeta'],
+    'kn.removeFolder': ['Remove folder', 'Remover pasta', 'Quitar carpeta'],
+    'kn.ignore.h': ['Ignore', 'Ignorar', 'Ignorar'],
+    'kn.ignore.help': [
+      'One per line: folder/file name (`private`) or extension (`*.png`).',
+      'Um por linha: nome de pasta/arquivo (`prontuario`) ou extensão (`*.png`).',
+      'Uno por línea: nombre de carpeta/archivo (`privado`) o extensión (`*.png`).',
+    ],
+    'kn.ignore.ph': ['private\n*.zip', 'prontuario\n*.zip', 'privado\n*.zip'],
+    'kn.index.h': ['Indexing', 'Indexação', 'Indexación'],
+    'kn.auto': [
+      'Reindex automatically when files change',
+      'Reindexar automaticamente quando os arquivos mudarem',
+      'Reindexar automáticamente cuando cambien los archivos',
+    ],
+    'kn.run': ['Index now', 'Indexar agora', 'Indexar ahora'],
+    'kn.cancel': ['Cancel', 'Cancelar', 'Cancelar'],
+    'kn.clear': ['Clear index', 'Limpar índice', 'Limpiar índice'],
+    'kn.stats': ['{files} files · {chunks} chunks · {memories} memories', '{files} arquivos · {chunks} trechos · {memories} memórias', '{files} archivos · {chunks} fragmentos · {memories} recuerdos'],
+    'kn.dbError': ['Database error: {e}', 'Erro no banco: {e}', 'Error en la base de datos: {e}'],
+    'idx.cleared': ['Index cleared.', 'Índice limpo.', 'Índice limpiado.'],
+    'idx.failed': ['Indexing failed: {e}', 'Indexação falhou: {e}', 'La indexación falló: {e}'],
+    'idx.progress': ['Indexing {done}/{total}: {file}', 'Indexando {done}/{total}: {file}', 'Indexando {done}/{total}: {file}'],
+    'idx.done': ['Done.', 'Concluído.', 'Terminado.'],
+    'idx.doneAuto': ['Reindexed automatically.', 'Reindexado automaticamente.', 'Reindexado automáticamente.'],
+    'idx.counts': ['{indexed} new/changed · {unchanged} unchanged.', '{indexed} novos/alterados · {unchanged} sem mudança.', '{indexed} nuevos/modificados · {unchanged} sin cambios.'],
+    'idx.skippedTypes': ['Unsupported types (ignored): {list}', 'Tipos não suportados (ignorados): {list}', 'Tipos no compatibles (ignorados): {list}'],
+    'idx.unreadable': ['Could not read: {list}', 'Não consegui ler: {list}', 'No pude leer: {list}'],
+    'idx.autoFail': ['Automatic reindexing failed: {e}', 'Reindexação automática falhou: {e}', 'La reindexación automática falló: {e}'],
+    'idx.stalled': [
+      'Indexing stopped: no progress in {time}{file}. Check that the embeddings server is responding (Servers tab) and try again.',
+      'Indexação interrompida: nenhum progresso em {time}{file}. Confira se o servidor de embeddings está respondendo (aba Servidores) e tente de novo.',
+      'Indexación interrumpida: sin progreso en {time}{file}. Comprueba que el servidor de embeddings responde (pestaña Servidores) e inténtalo de nuevo.',
+    ],
+    'idx.stalledAt': [' (stopped at {name})', ' (parou em {name})', ' (se detuvo en {name})'],
+    'idx.min': ['{n} min', '{n} min', '{n} min'],
+    'idx.sec': ['{n} s', '{n} s', '{n} s'],
+    'idx.noPdftoppm': [
+      'OCR for scanned PDFs needs pdftoppm (poppler-utils package). Standalone images will still be read.',
+      'OCR de PDFs escaneados precisa do pdftoppm (pacote poppler-utils). Imagens soltas serão lidas.',
+      'El OCR de PDF escaneados necesita pdftoppm (paquete poppler-utils). Las imágenes sueltas sí se leerán.',
+    ],
+    'idx.noTesseract': [
+      'OCR is on, but the "tesseract" command was not found. Install it from the Setup tab.',
+      'OCR ligado, mas o comando "tesseract" não foi encontrado. Instale-o na aba Instalação.',
+      'El OCR está activado, pero no se encontró el comando "tesseract". Instálalo en la pestaña Instalación.',
+    ],
+    'idx.noExt': ['(no extension)', '(sem extensão)', '(sin extensión)'],
+    'idx.noText': [
+      '{name} (no text; scanned PDFs and images need OCR)',
+      '{name} (sem texto; PDF escaneado ou imagem precisa do OCR)',
+      '{name} (sin texto; los PDF escaneados y las imágenes necesitan OCR)',
+    ],
+    'idx.noDocs': [
+      'Add at least one documents folder (or the brain folder).',
+      'Adicione ao menos uma pasta de documentos (ou a pasta brain).',
+      'Añade al menos una carpeta de documentos (o la carpeta brain).',
+    ],
+    'idx.embedStart': ['Starting the embeddings server...', 'Iniciando o servidor de embeddings...', 'Iniciando el servidor de embeddings...'],
+    'idx.autoFailLog': ['Automatic reindexing failed: {e}', 'Reindexação automática falhou: {e}', 'La reindexación automática falló: {e}'],
+    'idx.running': ['Indexing is already running', 'Indexação já em andamento', 'Ya hay una indexación en curso'],
+    'idx.watchFail': ['Could not watch {dir}: {e}', 'Não consegui observar {dir}: {e}', 'No pude vigilar {dir}: {e}'],
+
+    // ---------------------------------------------------------------- memory panel
+    'mem.h': ['Memory', 'Memória', 'Memoria'],
+    'mem.enabled': ['Use memory in answers', 'Usar memória nas respostas', 'Usar la memoria en las respuestas'],
+    'mem.help': [
+      'In the chat: `remember that my name is ...` · `forget #3` · `what do you remember`. The app only saves when you ask.',
+      'No chat: `lembre que meu nome é ...` · `esqueça #3` · `o que você lembra`. O app só grava quando você pede.',
+      'En el chat: `recuerda que me llamo ...` · `olvida #3` · `qué recuerdas`. La app solo guarda cuando tú lo pides.',
+    ],
+    'mem.ph': ['Something to remember…', 'Algo para lembrar…', 'Algo para recordar…'],
+    'mem.add': ['Save', 'Anotar', 'Guardar'],
+    'mem.clear': ['Erase all memory', 'Apagar toda a memória', 'Borrar toda la memoria'],
+    'mem.clearConfirm': ['Erase ALL memory? This cannot be undone.', 'Apagar TODA a memória? Isso não pode ser desfeito.', '¿Borrar TODA la memoria? No se puede deshacer.'],
+    'mem.forget': ['Forget', 'Esquecer', 'Olvidar'],
+    'mem.none': ['Nothing in memory yet.', 'Nada na memória ainda.', 'Aún no hay nada en la memoria.'],
+    'mem.profile.h': ['Fixed profile', 'Perfil fixo', 'Perfil fijo'],
+    'mem.profile.help': [
+      'Always sent to the model (name, language, answer preferences).',
+      'Sempre enviado ao modelo (nome, idioma, preferências de resposta).',
+      'Siempre se envía al modelo (nombre, idioma, preferencias de respuesta).',
+    ],
+    'mem.profile.ph': [
+      'E.g.: My name is ... I prefer short answers.',
+      'Ex.: Meu nome é ... Prefiro respostas curtas, em português.',
+      'Ej.: Me llamo ... Prefiero respuestas cortas, en español.',
+    ],
+    'mem.max': ['Memory limit in the prompt (characters)', 'Limite da memória no prompt (caracteres)', 'Límite de la memoria en el prompt (caracteres)'],
+
+    // ---------------------------------------------------------------- search panel
+    'se.h': ['Answers', 'Respostas', 'Respuestas'],
+    'se.useFiles': ['Use my files in answers', 'Usar meus arquivos nas respostas', 'Usar mis archivos en las respuestas'],
+    'se.maxTokens': ['Question token limit (input)', 'Limite de tokens da pergunta (entrada)', 'Límite de tokens de la pregunta (entrada)'],
+    'se.maxTokens.help': [
+      'Estimated count (~3.5 characters per token). The counter shows below the text box and sending is blocked above the limit.',
+      'Conta estimada (~3,5 caracteres por token). O contador aparece abaixo da caixa de texto e o envio é bloqueado acima do limite.',
+      'Cuenta estimada (~3,5 caracteres por token). El contador aparece bajo el cuadro de texto y el envío se bloquea por encima del límite.',
+    ],
+    'se.topK': ['Excerpts per question (top-k)', 'Trechos por pergunta (top-k)', 'Fragmentos por pregunta (top-k)'],
+    'se.ctx': ['Context limit (characters)', 'Limite de contexto (caracteres)', 'Límite de contexto (caracteres)'],
+    'se.hist': ['History turns', 'Turnos de histórico', 'Turnos de historial'],
+    'se.temp': ['Temperature', 'Temperatura', 'Temperatura'],
+    'se.sumMax': ['Max files for "summarize the folder"', 'Máx. de arquivos no "resuma a pasta"', 'Máx. de archivos en "resume la carpeta"'],
+    'se.hybrid.h': ['Hybrid search', 'Busca híbrida', 'Búsqueda híbrida'],
+    'se.hybrid.help': [
+      'Mixes meaning-based (vector) and keyword (FTS5) search. Further left = more keywords (good for acronyms and codes).',
+      'Mistura busca por significado (vetores) e por palavras (FTS5). Mais para a esquerda = mais palavras-chave (bom para siglas e códigos).',
+      'Mezcla búsqueda por significado (vectores) y por palabras (FTS5). Más a la izquierda = más palabras clave (bueno para siglas y códigos).',
+    ],
+    'se.words': ['Keywords', 'Palavras', 'Palabras'],
+    'se.vectors': ['Vectors', 'Vetores', 'Vectores'],
+    'se.vweight': ['Vectors {v}% · keywords {k}%', 'Vetores {v}% · palavras-chave {k}%', 'Vectores {v}% · palabras clave {k}%'],
+    'se.rerank.h': ['Reranker (optional)', 'Reranker (opcional)', 'Reranker (opcional)'],
+    'se.rerank.help': [
+      'Reorders the best candidates with a reranker model. Set up the server in the Servers tab.',
+      'Reordena os melhores candidatos com um modelo reranker. Configure o servidor na aba Servidores.',
+      'Reordena los mejores candidatos con un modelo reranker. Configura el servidor en la pestaña Servidores.',
+    ],
+    'se.rerank.on': ['Use reranker', 'Usar reranker', 'Usar reranker'],
+    'se.rerank.cand': ['Candidates to reorder', 'Candidatos a reordenar', 'Candidatos a reordenar'],
+
+    // ---------------------------------------------------------------- evaluation panel
+    'ev.h': ['Search test', 'Teste de busca', 'Prueba de búsqueda'],
+    'ev.help': [
+      'One test per line: `question => expected excerpt` (part of the file name or text). Measures whether search finds the right thing, so you can compare changes (model, weights, reranker).',
+      'Uma linha por teste: `pergunta => trecho esperado` (parte do nome do arquivo ou do texto). Mede se a busca encontra o certo, para você comparar mudanças (modelo, pesos, reranker).',
+      'Una línea por prueba: `pregunta => fragmento esperado` (parte del nombre del archivo o del texto). Mide si la búsqueda encuentra lo correcto, para comparar cambios (modelo, pesos, reranker).',
+    ],
+    'ev.ph': [
+      'What is the contract term? => contract\nHow does login work? => auth',
+      'Qual o prazo do contrato? => contrato\nComo funciona o login? => auth',
+      '¿Cuál es el plazo del contrato? => contrato\n¿Cómo funciona el inicio de sesión? => auth',
+    ],
+    'ev.run': ['Run evaluation', 'Rodar avaliação', 'Ejecutar evaluación'],
+    'ev.testing': ['Testing {n}/{total}…', 'Testando {n}/{total}…', 'Probando {n}/{total}…'],
+    'ev.none': ['No valid tests. Use: question => expected excerpt', 'Nenhum teste válido. Use: pergunta => trecho esperado', 'Ninguna prueba válida. Usa: pregunta => fragmento esperado'],
+    'ev.result': ['Hits: {hits}/{total} ({pct}%) · MRR {mrr}', 'Acertos: {hits}/{total} ({pct}%) · MRR {mrr}', 'Aciertos: {hits}/{total} ({pct}%) · MRR {mrr}'],
+    'ev.col.q': ['Question', 'Pergunta', 'Pregunta'],
+    'ev.col.exp': ['Expected', 'Esperado', 'Esperado'],
+    'ev.col.pos': ['Position', 'Posição', 'Posición'],
+    'ev.err': ['error: {e}', 'erro: {e}', 'error: {e}'],
+    'ev.miss': ['✗ not found', '✗ não achou', '✗ no encontrado'],
+    'ev.failed': ['Failed: {e}', 'Falhou: {e}', 'Falló: {e}'],
+
+    // ---------------------------------------------------------------- setup panel
+    'su.ocr.h': ['OCR (scanned PDFs and images)', 'OCR (PDF escaneado e imagens)', 'OCR (PDF escaneados e imágenes)'],
+    'su.ocr.on': ['Enable OCR', 'Ativar OCR', 'Activar OCR'],
+    'su.ocr.lang': ['Languages', 'Idiomas', 'Idiomas'],
+    'su.ocr.pages': ['Max pages/PDF', 'Máx. páginas/PDF', 'Máx. páginas/PDF'],
+    'su.ocr.check': ['Check installation', 'Verificar instalação', 'Comprobar instalación'],
+    'su.ocr.help': [
+      'Requires `tesseract` (and `pdftoppm` for PDFs). If missing, use the install buttons below (Linux, macOS and Windows).',
+      'Requer `tesseract` (e `pdftoppm` para PDFs). Se faltar, use os botões de instalação abaixo (Linux, macOS e Windows).',
+      'Requiere `tesseract` (y `pdftoppm` para PDF). Si falta, usa los botones de instalación de abajo (Linux, macOS y Windows).',
+    ],
+    'su.ocr.ok': ['ok', 'ok', 'ok'],
+    'su.ocr.missing': ['not found', 'não encontrado', 'no encontrado'],
+    'su.deps.h': ['Optional dependencies', 'Dependências opcionais', 'Dependencias opcionales'],
+    'su.deps.help': [
+      'OCR, scanned PDFs and old formats (.doc .xls .ppt .rtf) need external programs. Nothing is installed without your confirmation.',
+      'OCR, PDF escaneado e formatos antigos (.doc .xls .ppt .rtf) precisam de programas externos. Nada é instalado sem a sua confirmação.',
+      'El OCR, los PDF escaneados y los formatos antiguos (.doc .xls .ppt .rtf) necesitan programas externos. No se instala nada sin tu confirmación.',
+    ],
+    'su.deps.all': ['Install everything missing', 'Instalar tudo que falta', 'Instalar todo lo que falta'],
+    'su.deps.refresh': ['Check again', 'Verificar de novo', 'Comprobar de nuevo'],
+    'su.deps.help2': [
+      'Progress shows in the Logs tab. On Linux the password is requested in a system window (pkexec).',
+      'O andamento aparece na aba Logs. No Linux a senha é pedida numa janela do sistema (pkexec).',
+      'El progreso aparece en la pestaña Registros. En Linux la contraseña se pide en una ventana del sistema (pkexec).',
+    ],
+    'su.deps.install': ['Install', 'Instalar', 'Instalar'],
+    'su.deps.installing': ['Installing...', 'Instalando...', 'Instalando...'],
+    'su.deps.done': ['Done', 'Pronto', 'Listo'],
+    'su.deps.failedBtn': ['Failed', 'Falhou', 'Falló'],
+    'su.deps.installed': ['installed', 'instalado', 'instalado'],
+    'su.deps.missing': ['missing', 'falta', 'falta'],
+    'su.deps.count': ['{n} item(s) missing{mgr}', '{n} item(ns) faltando{mgr}', 'Faltan {n} elemento(s){mgr}'],
+    'su.deps.mgr': [' · installer: {m}', ' · instalador: {m}', ' · instalador: {m}'],
+    'su.deps.noMgr': [' · no package manager found', ' · nenhum gerenciador de pacotes encontrado', ' · no se encontró gestor de paquetes'],
+    'su.deps.allOk': ['Everything is installed.', 'Tudo instalado.', 'Todo está instalado.'],
+    'su.deps.waiting': ['Waiting for your confirmation...', 'Aguardando sua confirmação...', 'Esperando tu confirmación...'],
+    'su.deps.cancelled': ['Cancelled. Nothing was installed.', 'Cancelado. Nada foi instalado.', 'Cancelado. No se instaló nada.'],
+    'su.deps.someFailed': [
+      'Something failed. See the Logs tab, or run "npm run setup" in a terminal.',
+      'Algum item falhou. Veja a aba Logs; ou rode "npm run setup" no terminal.',
+      'Algo falló. Mira la pestaña Registros, o ejecuta "npm run setup" en una terminal.',
+    ],
+    'su.deps.progress': ['Installing {id}... (see the Logs tab)', 'Instalando {id}... (veja a aba Logs)', 'Instalando {id}... (mira la pestaña Registros)'],
+    'su.deps.failed': ['Failed: {e}', 'Falhou: {e}', 'Falló: {e}'],
+    'dep.tesseract': [
+      'OCR (tesseract + language data) — reads images and scanned PDFs',
+      'OCR (tesseract + português) — lê imagens e PDFs escaneados',
+      'OCR (tesseract + idioma) — lee imágenes y PDF escaneados',
+    ],
+    'dep.poppler': [
+      'poppler (pdftoppm) — turns scanned PDFs into images for OCR',
+      'poppler (pdftoppm) — transforma PDF escaneado em imagem para o OCR',
+      'poppler (pdftoppm) — convierte PDF escaneados en imágenes para el OCR',
+    ],
+    'dep.libreoffice': [
+      'LibreOffice — reads old formats (.doc .xls .ppt .rtf)',
+      'LibreOffice — lê formatos antigos (.doc .xls .ppt .rtf)',
+      'LibreOffice — lee formatos antiguos (.doc .xls .ppt .rtf)',
+    ],
+    'dep.sandbox': [
+      'Electron sandbox permission (Linux) — avoids the "SUID sandbox" error',
+      'Permissão do sandbox do Electron (Linux) — evita o erro "SUID sandbox"',
+      'Permiso del sandbox de Electron (Linux) — evita el error "SUID sandbox"',
+    ],
+    'dep.noPkexec': [
+      'Could not find "pkexec" (password window). In a terminal, run: npm run setup',
+      'Não encontrei o "pkexec" (janela de senha). No terminal, rode: npm run setup',
+      'No encontré "pkexec" (ventana de contraseña). En una terminal, ejecuta: npm run setup',
+    ],
+    'dep.noManager': [
+      'No package manager found (apt/dnf/pacman/zypper, Homebrew or winget/choco/scoop).',
+      'Nenhum gerenciador de pacotes encontrado (apt/dnf/pacman/zypper, Homebrew ou winget/choco/scoop).',
+      'No se encontró gestor de paquetes (apt/dnf/pacman/zypper, Homebrew o winget/choco/scoop).',
+    ],
+    'dep.noPackage': ['No {id} package for {mgr}; install it manually.', 'Sem pacote de {id} para {mgr}; instale manualmente.', 'No hay paquete de {id} para {mgr}; instálalo manualmente.'],
+    'dep.busy': ['An installation is already running.', 'Já existe uma instalação em andamento.', 'Ya hay una instalación en curso.'],
+    'dlg.installTitle': ['Allow installation?', 'Permitir instalação?', '¿Permitir la instalación?'],
+    'dlg.installMsg': ['Llamafile Brain wants to install on your computer:', 'O Llamafile Brain quer instalar no seu computador:', 'Llamafile Brain quiere instalar en tu equipo:'],
+    'dlg.installDetail': ['The system may ask for your administrator password.', 'O sistema pode pedir sua senha de administrador.', 'El sistema puede pedir tu contraseña de administrador.'],
+    'dlg.install': ['Install', 'Instalar', 'Instalar'],
+    'dlg.cancel': ['Cancel', 'Cancelar', 'Cancelar'],
+    'ext.noUrl': ['Enter the server URL (e.g. http://127.0.0.1:11434).', 'Informe a URL do servidor (ex.: http://127.0.0.1:11434).', 'Introduce la URL del servidor (p. ej., http://127.0.0.1:11434).'],
+    'ext.http': ['The server answered HTTP {status}: {body}', 'O servidor respondeu HTTP {status}: {body}', 'El servidor respondió HTTP {status}: {body}'],
+    'ext.noModel': ['Model "{model}" was not found on the server. With Ollama run: ollama pull {model}. Server said: {body}', 'O modelo "{model}" não foi encontrado no servidor. No Ollama rode: ollama pull {model}. O servidor disse: {body}', 'No se encontró el modelo "{model}" en el servidor. Con Ollama ejecuta: ollama pull {model}. El servidor dijo: {body}'],
+    'ext.ok': ['Connected to {url} (model {model}).', 'Conectado a {url} (modelo {model}).', 'Conectado a {url} (modelo {model}).'],
+    'dlg.portTitle': ['Port in use', 'Porta em uso', 'Puerto en uso'],
+    'dlg.portMsg': ['Port {port} is already in use. Switch to a random free port?', 'A porta {port} já está em uso. Trocar por uma porta livre aleatória?', 'El puerto {port} ya está en uso. ¿Cambiar a un puerto libre aleatorio?'],
+    'dlg.portDetail': [
+      'It may be another server or an old llamafile that has not closed. The new port is saved in the settings.',
+      'Pode ser outro servidor ou um llamafile antigo que não fechou. A nova porta fica salva nas configurações.',
+      'Puede ser otro servidor o un llamafile antiguo que no se ha cerrado. El nuevo puerto se guarda en la configuración.',
+    ],
+    'dlg.portChange': ['Use a random port', 'Usar porta aleatória', 'Usar puerto aleatorio'],
+    'dlg.portChanged': ['Port was busy; switched to {port}.', 'Porta ocupada; trocada para {port}.', 'Puerto ocupado; cambiado a {port}.'],
+    'dlg.pickLlamafile': ['Choose the llamafile ({kind})', 'Escolha o llamafile ({kind})', 'Elige el llamafile ({kind})'],
+    'dlg.pickDocs': ['Documents folder the assistant may read', 'Pasta de documentos que o assistente pode ler', 'Carpeta de documentos que el asistente puede leer'],
+    'dlg.pickBrain': ['"brain" folder (your .md notes)', 'Pasta "brain" (suas notas em .md)', 'Carpeta "brain" (tus notas en .md)'],
+    'dlg.pickDb': ['Folder for the SQLite database (brain.sqlite)', 'Pasta onde ficará o banco SQLite (brain.sqlite)', 'Carpeta para la base de datos SQLite (brain.sqlite)'],
+
+    // ---------------------------------------------------------------- chat
+    'chat.ph': [
+      'Ask, chat or say "remember that ..."  (Enter sends, Shift+Enter new line)',
+      'Pergunte, converse ou diga "lembre que ..."  (Enter envia, Shift+Enter quebra linha)',
+      'Pregunta, conversa o di "recuerda que ..."  (Enter envía, Shift+Enter salto de línea)',
+    ],
+    'chat.send': ['Send', 'Enviar', 'Enviar'],
+    'chat.stop': ['Stop', 'Parar', 'Detener'],
+    'chat.thinking': ['Thinking', 'Pensando', 'Pensando'],
+    'chat.interrupted': ['(interrupted)', '(interrompido)', '(interrumpido)'],
+    'chat.noAnswer': ['_(no answer)_', '_(sem resposta)_', '_(sin respuesta)_'],
+    'chat.error': ['**Error:** {e}', '**Erro:** {e}', '**Error:** {e}'],
+    'chat.saveErr': ['Error saving: {e}', 'Erro ao salvar: {e}', 'Error al guardar: {e}'],
+    'chat.tokens': ['~{used} / {max} tokens', '~{used} / {max} tokens', '~{used} / {max} tokens'],
+    'chat.tokensOver': [' — over the limit, shorten the text', ' — acima do limite, reduza o texto', ' — por encima del límite, reduce el texto'],
+    'chat.emptyQuestion': ['Empty question', 'Pergunta vazia', 'Pregunta vacía'],
+    'chat.tooLong': [
+      'The question has ~{n} tokens and the limit is {max} (Search tab → Question token limit).',
+      'A pergunta tem ~{n} tokens e o limite é {max} (aba Busca → Limite de tokens da pergunta).',
+      'La pregunta tiene ~{n} tokens y el límite es {max} (pestaña Búsqueda → Límite de tokens de la pregunta).',
+    ],
+    'chat.embedDown': [
+      'Embeddings server unavailable ({e}); using keyword search only.',
+      'Servidor de embeddings indisponível ({e}); usando só a busca por palavras-chave.',
+      'Servidor de embeddings no disponible ({e}); usando solo la búsqueda por palabras clave.',
+    ],
+
+    // ---------------------------------------------------------------- main process
+    'main.noDb': ['SQLite database is not open.', 'Banco SQLite não está aberto.', 'La base de datos SQLite no está abierta.'],
+    'main.badServer': ['invalid server', 'servidor inválido', 'servidor no válido'],
+    'main.samePort': [
+      '{a} and {b} are using the same port ({port}). Use different ports (chat 8080, embeddings 8081, reranker 8082).',
+      'O {a} e o {b} estão com a mesma porta ({port}). Use portas diferentes (chat 8080, embeddings 8081, reranker 8082).',
+      '{a} y {b} usan el mismo puerto ({port}). Usa puertos distintos (chat 8080, embeddings 8081, reranker 8082).',
+    ],
+    'main.memHeader': [
+      '<!-- Generated automatically by Llamafile Brain. To change it, use "remember that ...", "forget ..." or the Memory panel. -->\n# Memory\n\n',
+      '<!-- Gerado automaticamente pelo Llamafile Brain. Para alterar, use "lembre que ...", "esqueça ..." ou o painel Memória. -->\n# Memória\n\n',
+      '<!-- Generado automáticamente por Llamafile Brain. Para cambiarlo, usa "recuerda que ...", "olvida ..." o el panel Memoria. -->\n# Memoria\n\n',
+    ],
+    'main.memWriteFail': ['Could not write memory.md: {e}', 'Não consegui escrever memory.md: {e}', 'No pude escribir memory.md: {e}'],
+
+    // ---------------------------------------------------------------- network / servers (core)
+    'net.timeout': [
+      'The server did not respond in {min} min ({url}). It may be stuck or out of memory.',
+      'O servidor não respondeu em {min} min ({url}). Ele pode estar travado ou sem memória.',
+      'El servidor no respondió en {min} min ({url}). Puede estar bloqueado o sin memoria.',
+    ],
+    'net.refused': [
+      'Could not connect to {where} ({code}). The server is not running. In the Servers tab, click "Start" (llamafile mode) or check the URL (external mode, e.g. Ollama at http://127.0.0.1:11434).',
+      'Não consegui conectar em {where} ({code}). O servidor não está rodando. Na aba Servidores, clique em "Iniciar" (modo llamafile) ou confira a URL (modo externo, ex.: Ollama em http://127.0.0.1:11434).',
+      'No pude conectar con {where} ({code}). El servidor no está en marcha. En la pestaña Servidores, pulsa "Iniciar" (modo llamafile) o revisa la URL (modo externo, p. ej., Ollama en http://127.0.0.1:11434).',
+    ],
+    'net.embedHint': [
+      'Tip: start the embeddings server with a model made for that (e.g. mxbai-embed-large or embeddinggemma) or add --pooling mean to the extra arguments.',
+      'Dica: inicie o servidor de embeddings com um modelo próprio para isso (ex. mxbai-embed-large ou embeddinggemma) ou adicione --pooling mean nos argumentos extras.',
+      'Consejo: inicia el servidor de embeddings con un modelo hecho para eso (p. ej., mxbai-embed-large o embeddinggemma) o añade --pooling mean a los argumentos adicionales.',
+    ],
+    'net.embedUnexpected': ['Unexpected embedding response', 'Resposta de embedding inesperada', 'Respuesta de embedding inesperada'],
+    'srv.noFile': ['llamafile not found: {file}', 'Arquivo llamafile não encontrado: {file}', 'No se encontró el archivo llamafile: {file}'],
+    'srv.empty': ['(empty)', '(vazio)', '(vacío)'],
+    'srv.portBusy': [
+      'Port {port} is already in use (another server, or a previous llamafile that has not closed yet). Use a different port for each server (chat 8080, embeddings 8081, reranker 8082) or close the old process.',
+      'A porta {port} já está em uso (outro servidor, ou um llamafile anterior que ainda não fechou). Use uma porta diferente para cada servidor (chat 8080, embeddings 8081, reranker 8082) ou feche o processo antigo.',
+      'El puerto {port} ya está en uso (otro servidor, o un llamafile anterior que aún no se ha cerrado). Usa un puerto distinto para cada servidor (chat 8080, embeddings 8081, reranker 8082) o cierra el proceso antiguo.',
+    ],
+    'srv.execFail': ['Could not run the file: {e}', 'Não consegui executar o arquivo: {e}', 'No pude ejecutar el archivo: {e}'],
+    'srv.startError': ['error starting: {e}', 'erro ao iniciar: {e}', 'error al iniciar: {e}'],
+    'srv.exited': ['process exited (code {code})', 'processo terminou (código {code})', 'el proceso terminó (código {code})'],
+    'srv.closed': [
+      'The server ({name}) closed while starting (code {code}). Last lines:\n{tail}',
+      'O servidor ({name}) fechou ao iniciar (código {code}). Últimas linhas:\n{tail}',
+      'El servidor ({name}) se cerró al iniciar (código {code}). Últimas líneas:\n{tail}',
+    ],
+    'rerank.failed': [
+      'Rerank failed ({e}); using the hybrid search order.',
+      'Rerank falhou ({e}); usando a ordem da busca híbrida.',
+      'El rerank falló ({e}); usando el orden de la búsqueda híbrida.',
+    ],
+    'rerank.noEndpoint': [
+      'The rerank server has no /v1/rerank endpoint; using the hybrid search order.',
+      'Servidor de rerank sem endpoint /v1/rerank; usando a ordem da busca híbrida.',
+      'El servidor de rerank no tiene el endpoint /v1/rerank; usando el orden de la búsqueda híbrida.',
+    ],
+    'rerank.unexpected': ['unexpected rerank response', 'resposta de rerank inesperada', 'respuesta de rerank inesperada'],
+    'sqlite.missing': [
+      'The built-in SQLite module (node:sqlite) is not available in this Electron/Node version. Use Electron 37+ (Node 22.5+).',
+      'O módulo SQLite embutido (node:sqlite) não está disponível nesta versão do Electron/Node. Use Electron 37+ (Node 22.5+).',
+      'El módulo SQLite integrado (node:sqlite) no está disponible en esta versión de Electron/Node. Usa Electron 37+ (Node 22.5+).',
+    ],
+    'db.dimChanged': [
+      'The embedding dimension changed ({a} ≠ {b}). Click "Clear index" and index again.',
+      'A dimensão dos embeddings mudou ({a} ≠ {b}). Clique em "Limpar índice" e indexe de novo.',
+      'La dimensión de los embeddings cambió ({a} ≠ {b}). Pulsa "Limpiar índice" e indexa de nuevo.',
+    ],
+    'db.dimQuery': [
+      'The question embedding dimension differs from the index. Click "Clear index" and index again.',
+      'A dimensão do embedding da pergunta difere do índice. Clique em "Limpar índice" e indexe de novo.',
+      'La dimensión del embedding de la pregunta difiere del índice. Pulsa "Limpiar índice" e indexa de nuevo.',
+    ],
+    'db.memEmpty': ['Empty memory', 'Memória vazia', 'Memoria vacía'],
+
+    // ---------------------------------------------------------------- memory commands (replies)
+    'memc.saved': ['✅ Saved (**#{id}**): {text}', '✅ Anotado (**#{id}**): {text}', '✅ Guardado (**#{id}**): {text}'],
+    'memc.dup': ['Already saved (**#{id}**): {text}', 'Já estava anotado (**#{id}**): {text}', 'Ya estaba guardado (**#{id}**): {text}'],
+    'memc.list': [
+      '**What is in memory ({n}):**\n\n{list}\n\nTo remove: `forget #number` or `forget <text>`.',
+      '**O que está na memória ({n}):**\n\n{list}\n\nPara remover: `esqueça #número` ou `esqueça <trecho>`.',
+      '**Qué hay en la memoria ({n}):**\n\n{list}\n\nPara quitar: `olvida #número` o `olvida <texto>`.',
+    ],
+    'memc.empty': [
+      'Memory is empty. Use "remember that ..." to save something.',
+      'A memória está vazia. Use "lembre que ..." para anotar algo.',
+      'La memoria está vacía. Usa "recuerda que ..." para guardar algo.',
+    ],
+    'memc.noWipe': [
+      'To avoid accidents, I do not erase everything by command. Use the "Erase all memory" button in the Memory panel.',
+      'Para evitar acidentes, não apago tudo por comando. Use o botão "Apagar toda a memória" no painel Memória.',
+      'Para evitar accidentes, no borro todo por comando. Usa el botón "Borrar toda la memoria" del panel Memoria.',
+    ],
+    'memc.noId': ['I could not find memory #{id}.', 'Não encontrei a memória #{id}.', 'No encontré el recuerdo #{id}.'],
+    'memc.forgot': ['🗑️ Forgotten (**#{id}**): {text}', '🗑️ Esquecido (**#{id}**): {text}', '🗑️ Olvidado (**#{id}**): {text}'],
+    'memc.noMatch': [
+      'I found nothing in memory with "{text}". Use "what do you remember" to see the list.',
+      'Não encontrei nada na memória com "{text}". Use "o que você lembra" para ver a lista.',
+      'No encontré nada en la memoria con "{text}". Usa "qué recuerdas" para ver la lista.',
+    ],
+    'memc.many': [
+      'I found {n} memories with "{text}". Tell me which to remove, for example `forget #{id}`:\n\n{list}',
+      'Encontrei {n} memórias com "{text}". Diga qual remover, por exemplo `esqueça #{id}`:\n\n{list}',
+      'Encontré {n} recuerdos con "{text}". Dime cuál quitar, por ejemplo `olvida #{id}`:\n\n{list}',
+    ],
+
+    // ---------------------------------------------------------------- folder summaries
+    'sum.empty': [
+      'No files are indexed yet. Add a folder in "Knowledge → Document folders" and click "Index now".',
+      'Ainda não há arquivos indexados. Adicione a pasta em "Conhecimento → Pastas de documentos" e clique em "Indexar agora".',
+      'Todavía no hay archivos indexados. Añade la carpeta en "Conocimiento → Carpetas de documentos" y pulsa "Indexar ahora".',
+    ],
+    'sum.chunks': ['{n} chunks', '{n} trechos', '{n} fragmentos'],
+    'sum.listH': ['**Indexed files ({n}):**', '**Arquivos indexados ({n}):**', '**Archivos indexados ({n}):**'],
+    'sum.progress': ['Summarizing {n} of {total} indexed files…', 'Resumindo {n} de {total} arquivos indexados…', 'Resumiendo {n} de {total} archivos indexados…'],
+    'sum.fail': ['(could not summarize: {e})', '(não consegui resumir: {e})', '(no pude resumir: {e})'],
+    'sum.more': [
+      '_({n} more files were not summarized; raise the limit in Search.)_',
+      '_(Mais {n} arquivos não foram resumidos; aumente o limite em Busca.)_',
+      '_({n} archivos más no se resumieron; sube el límite en Búsqueda.)_',
+    ],
+    'sum.overview': ['Overview', 'Visão geral', 'Visión general'],
+  };
+
+  let lang = 'en';
+  const valid = (l) => ORDER.includes(l);
+
+  function setLang(l) {
+    lang = valid(l) ? l : 'en';
+    return lang;
+  }
+  const getLang = () => lang;
+
+  /** Picks the best supported language from a locale string such as "pt_BR.UTF-8" or "es-MX". */
+  function detect(locale) {
+    const l = String(locale || '').toLowerCase().slice(0, 2);
+    return valid(l) ? l : 'en';
+  }
+
+  function format(s, params) {
+    return params ? s.replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m)) : s;
+  }
+
+  function t(key, params, forLang) {
+    const e = C[key];
+    if (!e) return key;
+    const l = forLang || lang;
+    const s = e[ORDER.indexOf(l)] ?? e[0];
+    return format(s, params);
+  }
+
+  return { t, setLang, getLang, detect, LANGS, PROMPT_LANG, catalog: C, ORDER };
+});

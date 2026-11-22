@@ -1,0 +1,212 @@
+{
+  "name": "llamafile-brain",
+  "version": "0.1.0",
+  "description": "Chat with your own files using a local model (Mozilla llamafile, Ollama…): hybrid RAG in SQLite, memory and OCR — all on your machine.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "e2e": "electron test/e2e/electron-e2e.js",
+    "postinstall": "node scripts/postinstall.js",
+    "setup": "node scripts/setup.js",
+    "fix-sandbox": "node scripts/fix-sandbox.js",
+    "start:linux": "node scripts/fix-sandbox.js --start",
+    "start:dev": "electron . --no-sandbox",
+    "dist": "node scripts/release.js",
+    "release": "node scripts/release.js",
+    "release:linux": "node scripts/release.js --linux",
+    "release:win": "node scripts/release.js --win",
+    "release:mac": "node scripts/release.js --mac",
+    "release:all": "node scripts/release.js --linux --win --mac",
+    "icons": "node scripts/make-icons.js"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0",
+    "jsdom": "^31.0.1"
+  },
+  "optionalDependencies": {
+    "pdf-parse": "^1.1.1"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
+  "author": {
+    "name": "Natan Cabral",
+    "url": "https://github.com/natancabraldev"
+  },
+  "homepage": "https://github.com/natancabraldev/llamafile-brain#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/natancabraldev/llamafile-brain.git"
+  },
+  "bugs": {
+    "url": "https://github.com/natancabraldev/llamafile-brain/issues"
+  },
+  "keywords": [
+    "llamafile",
+    "llm",
+    "rag",
+    "local-ai",
+    "electron",
+    "sqlite",
+    "embeddings",
+    "ollama",
+    "privacy",
+    "knowledge-base",
+    "ocr",
+    "portuguese"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "private": false,
+  "build": {
+    "appId": "dev.natancabral.llamafile-brain",
+    "productName": "Llamafile Brain",
+    "copyright": "Copyright © 2026 Natan Cabral",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json",
+      "LICENSE",
+      "!**/*.map"
+    ],
+    "asar": true,
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+    "linux": {
+      "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Office",
+      "synopsis": "Chat with your files using local AI",
+      "description": "Desktop assistant that indexes your documents (hybrid RAG in SQLite, OCR, memory) and answers with a local model, sending nothing to the cloud.",
+      "maintainer": "Natan Cabral",
+      "vendor": "Natan Cabral",
+      "icon": "build/icons",
+      "desktop": {
+        "entry": {
+          "Name": "Llamafile Brain",
+          "Comment": "Chat with your files using local AI",
+          "Keywords": "ia;llm;rag;documentos;llamafile;",
+          "StartupWMClass": "llamafile-brain"
+        }
+      },
+      "syncDesktopName": true
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ],
+      "recommends": [
+        "tesseract-ocr",
+        "tesseract-ocr-por",
+        "poppler-utils"
+      ]
+    },
+    "rpm": {
+      "depends": [
+        "gtk3",
+        "libnotify",
+        "nss",
+        "libXScrnSaver",
+        "libXtst",
+        "xdg-utils",
+        "at-spi2-core",
+        "libuuid"
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "shortcutName": "Llamafile Brain",
+      "buildUniversalInstaller": false,
+      "artifactName": "${name}-${version}-win-${arch}-setup.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "identity": null
+    },
+    "dmg": {
+      "title": "Llamafile Brain ${version}"
+    },
+    "portable": {
+      "artifactName": "${name}-${version}-win-${arch}-portable.${ext}"
+    }
+  },
+  "desktopName": "llamafile-brain.desktop"
+}

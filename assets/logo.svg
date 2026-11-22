@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 280" width="1200" height="280" role="img" aria-label="Llamafile Brain — seu conhecimento, local e privado">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1d2b53"/><stop offset="1" stop-color="#0c1022"/></linearGradient>
+    <linearGradient id="ac" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7aa2ff"/><stop offset="1" stop-color="#5eead4"/></linearGradient>
+  </defs>
+  <rect width="1200" height="280" rx="28" fill="#f8fafc"/>
+  <g transform="translate(20 20) scale(0.2344)">
+    <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
+    <g fill="#7aa2ff" fill-opacity="0.10" stroke="url(#ac)" stroke-width="22" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M 496 232 C 410 200 292 224 262 330 C 196 352 176 442 220 502 C 180 562 212 658 296 676 C 326 752 440 774 496 728 Z"/>
+      <path transform="translate(1024 0) scale(-1 1)" d="M 496 232 C 410 200 292 224 262 330 C 196 352 176 442 220 502 C 180 562 212 658 296 676 C 326 752 440 774 496 728 Z"/>
+    </g>
+    <g stroke="#e8f0ff" stroke-width="9" stroke-linecap="round" opacity="0.9">
+      <line x1="400" y1="330" x2="512" y2="420"/><line x1="624" y1="330" x2="512" y2="420"/><line x1="400" y1="330" x2="400" y2="560"/><line x1="624" y1="330" x2="624" y2="560"/>
+      <line x1="512" y1="420" x2="400" y2="560"/><line x1="512" y1="420" x2="624" y2="560"/><line x1="400" y1="560" x2="512" y2="650"/><line x1="624" y1="560" x2="512" y2="650"/>
+    </g>
+    <g fill="#e8f0ff"><circle cx="400" cy="330" r="26"/><circle cx="624" cy="330" r="26"/><circle cx="512" cy="420" r="32" fill="#5eead4"/><circle cx="400" cy="560" r="26"/><circle cx="624" cy="560" r="26"/><circle cx="512" cy="650" r="26"/></g>
+  </g>
+  <g font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <text x="300" y="138" font-size="84" font-weight="700" fill="#0f172a">Llamafile <tspan fill="#4f6fe0">Brain</tspan></text>
+    <text x="304" y="190" font-size="30" fill="#475569">Converse com os seus arquivos. Local, privado, sem nuvem.</text>
+  </g>
+</svg>

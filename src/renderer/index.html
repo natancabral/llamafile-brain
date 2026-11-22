@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:" />
+  <title>Llamafile Brain</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <aside id="sidebar">
+    <div class="brand">
+      <h1>Llamafile Brain</h1>
+      <span class="lang-wrap"><span id="lang-flag" class="flag" data-flag="en" aria-hidden="true"></span>
+      <select id="lang" aria-label="Language" title="Language">
+        <option value="en">English</option>
+        <option value="pt">Português</option>
+        <option value="es">Español</option>
+      </select></span>
+    </div>
+    <nav id="tabs">
+      <button data-i18n="tab.servers" data-tab="servers" class="active">Servers</button>
+      <button data-i18n="tab.knowledge" data-tab="knowledge">Knowledge</button>
+      <button data-i18n="tab.memory" data-tab="memory">Memory</button>
+      <button data-i18n="tab.search" data-tab="search">Search</button>
+      <button data-i18n="tab.eval" data-tab="eval">Evaluation</button>
+      <button data-i18n="tab.setup" data-tab="setup">Setup</button>
+      <button data-i18n="tab.logs" data-tab="logs">Logs</button>
+    </nav>
+
+    <!-- ============ Servers ============ -->
+    <section class="panel" data-panel="servers">
+      <div class="callout" id="models-help">
+        <strong data-i18n="models.title">Where to download a model</strong>
+        <p data-i18n="models.p1"></p>
+        <p data-i18n="models.p2"></p>
+        <p data-i18n="models.p3"></p>
+      </div>
+      <div id="servers"></div>
+    </section>
+
+    <!-- ============ Knowledge ============ -->
+    <section class="panel hidden" data-panel="knowledge">
+      <h2 data-i18n="kn.sqlite.h">SQLite database</h2>
+      <p class="help" data-i18n="kn.sqlite.help"></p>
+      <input id="db-path" class="path" readonly />
+      <div class="row">
+        <button id="db-pick" data-i18n="kn.pick">Choose folder…</button>
+        <button id="db-reset" data-i18n="kn.default">Default</button>
+      </div>
+      <div id="stats" class="muted"></div>
+
+      <h2 data-i18n="kn.brain.h">Brain folder (your notes)</h2>
+      <p class="help" data-i18n="kn.brain.help"></p>
+      <input id="brain-path" class="path" readonly data-i18n-ph="kn.brain.none" placeholder="(none)" />
+      <div class="row">
+        <button id="brain-pick" data-i18n="kn.pick">Choose folder…</button>
+        <button id="brain-clear" data-i18n="kn.remove">Remove</button>
+      </div>
+
+      <h2 data-i18n="kn.docs.h">Document folders</h2>
+      <p class="help" data-i18n="kn.docs.help"></p>
+      <ul id="folders"></ul>
+      <button id="add-folder" data-i18n="kn.add">+ Add folder</button>
+
+      <h2 data-i18n="kn.ignore.h">Ignore</h2>
+      <p class="help" data-i18n="kn.ignore.help"></p>
+      <textarea data-s="ignore" data-type="lines" rows="3" data-i18n-ph="kn.ignore.ph" placeholder="private&#10;*.zip"></textarea>
+
+      <h2 data-i18n="kn.index.h">Indexing</h2>
+      <label class="check"><input type="checkbox" data-s="autoIndex" /> <span data-i18n="kn.auto">Reindex automatically when files change</span></label>
+      <div class="row">
+        <button id="index-run" class="primary" data-i18n="kn.run">Index now</button>
+        <button id="index-cancel" data-i18n="kn.cancel">Cancel</button>
+        <button id="index-clear" data-i18n="kn.clear">Clear index</button>
+      </div>
+      <div id="index-status" class="muted"></div>
+    </section>
+
+    <!-- ============ Memory ============ -->
+    <section class="panel hidden" data-panel="memory">
+      <h2 data-i18n="mem.h">Memory</h2>
+      <label class="check"><input type="checkbox" data-s="memory.enabled" /> <span data-i18n="mem.enabled">Use memory in answers</span></label>
+      <p class="help" data-i18n="mem.help"></p>
+      <div class="row">
+        <input id="mem-input" data-i18n-ph="mem.ph" placeholder="Something to remember…" />
+        <button id="mem-add" data-i18n="mem.add">Save</button>
+      </div>
+      <ul id="memlist"></ul>
+      <button id="mem-clear" data-i18n="mem.clear">Erase all memory</button>
+
+      <h2 data-i18n="mem.profile.h">Fixed profile</h2>
+      <p class="help" data-i18n="mem.profile.help"></p>
+      <textarea data-s="profile" rows="4" data-i18n-ph="mem.profile.ph" placeholder="E.g.: My name is ... I prefer short answers."></textarea>
+      <label><span data-i18n="mem.max">Memory limit in the prompt (characters)</span> <input type="number" data-s="memory.maxChars" min="200" max="8000" /></label>
+    </section>
+
+    <!-- ============ Search ============ -->
+    <section class="panel hidden" data-panel="search">
+      <h2 data-i18n="se.h">Answers</h2>
+      <label class="check"><input type="checkbox" data-s="useFiles" /> <span data-i18n="se.useFiles">Use my files in answers</span></label>
+      <label><span data-i18n="se.maxTokens">Question token limit (input)</span> <input type="number" data-s="maxInputTokens" min="50" max="32000" /></label>
+      <p class="help" data-i18n="se.maxTokens.help"></p>
+      <label><span data-i18n="se.topK">Excerpts per question (top-k)</span> <input type="number" data-s="topK" min="1" max="20" /></label>
+      <label><span data-i18n="se.ctx">Context limit (characters)</span> <input type="number" data-s="contextChars" min="1000" max="60000" /></label>
+      <label><span data-i18n="se.hist">History turns</span> <input type="number" data-s="historyTurns" min="0" max="10" /></label>
+      <label><span data-i18n="se.temp">Temperature</span> <input type="number" data-s="temperature" step="0.1" min="0" max="2" /></label>
+      <label><span data-i18n="se.sumMax">Max files for "summarize the folder"</span> <input type="number" data-s="summaryMaxFiles" min="1" max="500" /></label>
+
+      <h2 data-i18n="se.hybrid.h">Hybrid search</h2>
+      <p class="help" data-i18n="se.hybrid.help"></p>
+      <div class="row2"><span class="muted" data-i18n="se.words">Keywords</span><input type="range" min="0" max="1" step="0.05" data-s="hybrid.vectorWeight" id="vweight" /><span class="muted" data-i18n="se.vectors">Vectors</span></div>
+      <div id="vweight-val" class="muted"></div>
+
+      <h2 data-i18n="se.rerank.h">Reranker (optional)</h2>
+      <p class="help" data-i18n="se.rerank.help"></p>
+      <label class="check"><input type="checkbox" data-s="rerank.enabled" /> <span data-i18n="se.rerank.on">Use reranker</span></label>
+      <label><span data-i18n="se.rerank.cand">Candidates to reorder</span> <input type="number" data-s="rerank.candidates" min="5" max="100" /></label>
+    </section>
+
+    <!-- ============ Evaluation ============ -->
+    <section class="panel hidden" data-panel="eval">
+      <h2 data-i18n="ev.h">Search test</h2>
+      <p class="help" data-i18n="ev.help"></p>
+      <textarea id="eval-set" rows="7" data-i18n-ph="ev.ph" placeholder="What is the contract term? => contract&#10;How does login work? => auth"></textarea>
+      <div class="row"><button id="eval-run" class="primary" data-i18n="ev.run">Run evaluation</button><span id="eval-progress" class="muted"></span></div>
+      <div id="eval-out"></div>
+    </section>
+
+    <!-- ============ Setup ============ -->
+    <section class="panel hidden" data-panel="setup">
+      <h2 data-i18n="su.ocr.h">OCR (scanned PDFs and images)</h2>
+      <label class="check"><input type="checkbox" data-s="ocr.enabled" /> <span data-i18n="su.ocr.on">Enable OCR</span></label>
+      <div class="row2">
+        <label><span data-i18n="su.ocr.lang">Languages</span> <input data-s="ocr.lang" placeholder="por+eng" /></label>
+        <label><span data-i18n="su.ocr.pages">Max pages/PDF</span> <input type="number" data-s="ocr.maxPages" min="1" max="300" /></label>
+      </div>
+      <div class="row"><button id="ocr-check" data-i18n="su.ocr.check">Check installation</button><span id="ocr-status" class="muted"></span></div>
+      <p class="help" data-i18n="su.ocr.help"></p>
+
+      <h2 data-i18n="su.deps.h">Optional dependencies</h2>
+      <p class="help" data-i18n="su.deps.help"></p>
+      <div id="deps-list"></div>
+      <div class="row">
+        <button id="deps-install-all" class="primary" data-i18n="su.deps.all">Install everything missing</button>
+        <button id="deps-refresh" data-i18n="su.deps.refresh">Check again</button>
+      </div>
+      <p id="deps-status" class="muted"></p>
+      <p class="help" data-i18n="su.deps.help2"></p>
+    </section>
+
+    <!-- ============ Logs ============ -->
+    <section class="panel hidden" data-panel="logs">
+      <pre id="logs"></pre>
+    </section>
+  </aside>
+
+  <main>
+    <div id="messages"></div>
+    <div id="token-count" class="token-count muted"></div>
+    <form id="form">
+      <textarea id="input" rows="2" data-i18n-ph="chat.ph" placeholder="Ask, chat or say &quot;remember that ...&quot;  (Enter sends, Shift+Enter new line)"></textarea>
+      <button id="send" class="primary" type="submit" data-i18n="chat.send">Send</button>
+      <button id="stop" type="button" class="hidden" data-i18n="chat.stop">Stop</button>
+    </form>
+  </main>
+
+  <template id="srv-tpl">
+    <div class="srv">
+      <div class="row"><strong class="srv-title"></strong><span class="badge">stopped</span></div>
+      <p class="help srv-hint"></p>
+      <label><span data-i18n="srv.mode">Mode</span>
+        <select data-k="mode">
+          <option value="spawn" data-i18n="srv.spawn">Start llamafile</option>
+          <option value="external" data-i18n="srv.external">External server (Ollama, etc.)</option>
+        </select>
+      </label>
+      <div class="spawn">
+        <label><span data-i18n="srv.file">llamafile file</span>
+          <div class="row"><input data-k="file" readonly /><button class="pick" type="button">…</button></div>
+        </label>
+        <div class="row2">
+          <label><span data-i18n="srv.port">Port</span> <input type="number" data-k="port" /></label>
+        </div>
+        <label><span data-i18n="srv.gpu">Processing (GPU)</span>
+          <select data-k="gpu">
+            <option value="auto" data-i18n="srv.gpu.auto">Automatic (llamafile decides)</option>
+            <option value="on" data-i18n="srv.gpu.on">Use GPU (all layers)</option>
+            <option value="off" data-i18n="srv.gpu.off">CPU only (no GPU)</option>
+          </select>
+        </label>
+        <label><span data-i18n="srv.args">Extra arguments</span> <input data-k="args" /></label>
+      </div>
+      <div class="external hidden">
+        <label><span data-i18n="srv.url">URL</span> <input data-k="url" placeholder="http://127.0.0.1:11434" /></label>
+      </div>
+      <label><span data-i18n="srv.model">Model name</span> <input data-k="model" /></label>
+      <div class="row"><button class="start" type="button" data-i18n="srv.start">Start</button><button class="stop" type="button" data-i18n="srv.stop">Stop</button></div>
+    </div>
+  </template>
+
+  <script src="../shared/i18n.js"></script>
+  <script src="markdown.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
