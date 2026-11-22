@@ -31,7 +31,7 @@ Também dá para rodar manualmente em *Actions → Release → Run workflow* (ge
 ## Opção 2 — Na sua máquina
 
 ```bash
-npm install
+npm install            # ou: yarn
 npm run release          # o que o seu sistema consegue gerar
 npm run release:linux    # .deb .rpm .AppImage .tar.gz
 npm run release:win      # Windows 64 e 32 bits
@@ -63,7 +63,7 @@ Para assinar, configure os segredos do certificado no repositório e remova `CSC
 
 ## Ícones
 
-`assets/icon.svg` é a fonte. `npm run icons` regenera `build/icon.png` e `build/icon.ico` (precisa de `rsvg-convert` e ImageMagick). O `.icns` do macOS é gerado pelo electron-builder a partir do PNG.
+`assets/icon.svg` é a fonte. `npm run icons` (ou `yarn icons`) regenera `build/icon.png`, `build/icons/*.png` (Linux), `build/icon.ico` (Windows) e `build/icon.icns` (macOS) — precisa de `rsvg-convert` e ImageMagick; o `.icns` é escrito pelo próprio script, então não precisa de um Mac.
 
 ## Checklist de uma release
 

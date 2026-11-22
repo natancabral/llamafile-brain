@@ -147,6 +147,23 @@ function buildServers() {
     host.append(block);
   }
 }
+// While a server is starting: spinner (CSS) + elapsed seconds, so loading a big model never looks frozen.
+const startTimers = new WeakMap();
+function trackStarting(block, s) {
+  const badge = block.querySelector('.badge');
+  const t = startTimers.get(block);
+  if (s !== 'starting') {
+    if (t) clearInterval(t.id);
+    startTimers.delete(block);
+    return;
+  }
+  if (t) return;
+  const t0 = Date.now();
+  const tick = () => {
+    if (badge.classList.contains('starting')) badge.textContent = `${tr('status.starting')} ${Math.floor((Date.now() - t0) / 1000)}s`;
+  };
+  startTimers.set(block, { id: setInterval(tick, 1000) });
+}
 function setStatus(st) {
   state.servers = st;
   document.querySelectorAll('.srv').forEach((b) => {
@@ -154,6 +171,7 @@ function setStatus(st) {
     const badge = b.querySelector('.badge');
     badge.textContent = ['stopped', 'starting', 'running', 'error'].includes(s) ? tr(`status.${s}`) : s;
     badge.className = `badge ${s}`;
+    trackStarting(b, s);
     const start = b.querySelector('.start');
     if (start) start.disabled = s === 'starting' || s === 'running'; // already starting/running: no need to click again
   });

@@ -387,6 +387,7 @@ function registerIpc() {
       // External server (Ollama etc.): "Start" really tests the URL + model and shows the result.
       extStatus[which] = 'starting';
       send('servers-status', state().servers);
+      log(which, t('ext.testing', { url: s.url, model: s.model || 'local' }));
       try {
         const r = await checkExternal(which, s.url, s.model);
         extStatus[which] = 'running';

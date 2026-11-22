@@ -79,7 +79,7 @@ async function main() {
   if (sandboxNeeded) {
     console.log('\nLinux: Electron needs permission on chrome-sandbox (owner root + mode 4755) to run with the sandbox enabled.');
     if (yes || (await ask('Fix it now (uses sudo)? [y/N] '))) run(['node', path.join(__dirname, 'fix-sandbox.js')]);
-    else console.log('Skipped. Alternative without sudo: npm run start:dev');
+    else console.log('Skipped. Alternative without sudo: npm run start:dev (or: yarn start:dev)');
   }
 
   const still = missingItems();

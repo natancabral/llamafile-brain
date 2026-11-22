@@ -67,9 +67,17 @@ class LlamafileServer {
   start(opts) {
     if (this.starting) return this.starting;
     if (this.proc) return Promise.resolve();
-    this.starting = this._start(opts).finally(() => {
-      this.starting = null;
-    });
+    // Mark "starting" right away (the UI is told before the first await below), otherwise it would
+    // briefly read "stopped" with the Start button enabled while the model is still loading.
+    this.status = 'starting';
+    this.starting = this._start(opts)
+      .catch((e) => {
+        if (this.status === 'starting') this.status = 'error'; // failed before spawning (no file, busy port...)
+        throw e;
+      })
+      .finally(() => {
+        this.starting = null;
+      });
     return this.starting;
   }
 

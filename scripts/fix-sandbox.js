@@ -6,12 +6,13 @@
  * and, if you want, starts the app.
  *
  *   node scripts/fix-sandbox.js          -> only fixes the permissions
- *   node scripts/fix-sandbox.js --start  -> fixes them and runs `npm start`
+ *   node scripts/fix-sandbox.js --start  -> fixes them and runs the `start` script (npm, yarn or pnpm)
  *
  * Works from any folder (uses the project's own location) and accepts paths with spaces.
- * Needs sudo (it will ask for your password). Run it again after every `npm install`.
+ * Needs sudo (it will ask for your password). Run it again after every install (`npm install` / `yarn install`).
  */
 const { spawnSync } = require('node:child_process');
+const pm = require('./pm');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -23,7 +24,7 @@ if (process.platform !== 'linux') {
   process.exit(0);
 }
 if (!fs.existsSync(sandbox)) {
-  console.error(`Could not find ${sandbox}\nRun first: npm install`);
+  console.error(`Could not find ${sandbox}\nRun first: npm install (or yarn install)`);
   process.exit(1);
 }
 
@@ -44,6 +45,6 @@ sudo('chmod', ['4755', sandbox]);
 console.log('chrome-sandbox permissions fixed.');
 
 if (process.argv.includes('--start')) {
-  const r = spawnSync('npm', ['start'], { cwd: root, stdio: 'inherit' });
+  const r = spawnSync(pm.bin, ['start'], { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
   process.exit(r.status || 0);
 }

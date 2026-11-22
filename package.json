@@ -24,7 +24,7 @@
   "devDependencies": {
     "electron": "^37.0.0",
     "electron-builder": "^26.0.0",
-    "jsdom": "^31.0.1"
+    "jsdom": "^26.1.0"
   },
   "optionalDependencies": {
     "pdf-parse": "^1.1.1"
@@ -59,7 +59,7 @@
     "portuguese"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "private": false,
   "build": {

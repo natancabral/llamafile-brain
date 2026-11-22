@@ -223,3 +223,12 @@ test('llamafile: opção de GPU (auto / usar / só CPU) vira -ngl, sem sobrescre
   await srv.start({ file: f, port: 18996, gpu: 'off' }).catch(() => {});
   assert.match(logs.join(''), /--port 18996 -ngl 0/);
 });
+
+test('llamafile: status is "starting" immediately after start() (no "stopped" flicker, so one click is enough)', async () => {
+  const { LlamafileServer } = require('../src/core/llamafile');
+  const srv = new LlamafileServer({ name: 'chat' });
+  const p = srv.start({ file: '/nonexistent/model.llamafile', port: 18998 });
+  assert.strictEqual(srv.status, 'starting'); // synchronous: the UI is notified right after this
+  await assert.rejects(p, /./);
+  assert.strictEqual(srv.status, 'error'); // early failure does not stay stuck on "starting"
+});

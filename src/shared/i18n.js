@@ -288,9 +288,9 @@
     'su.deps.waiting': ['Waiting for your confirmation...', 'Aguardando sua confirmação...', 'Esperando tu confirmación...'],
     'su.deps.cancelled': ['Cancelled. Nothing was installed.', 'Cancelado. Nada foi instalado.', 'Cancelado. No se instaló nada.'],
     'su.deps.someFailed': [
-      'Something failed. See the Logs tab, or run "npm run setup" in a terminal.',
-      'Algum item falhou. Veja a aba Logs; ou rode "npm run setup" no terminal.',
-      'Algo falló. Mira la pestaña Registros, o ejecuta "npm run setup" en una terminal.',
+      'Something failed. See the Logs tab, or run "npm run setup" (or "yarn setup") in a terminal.',
+      'Algum item falhou. Veja a aba Logs; ou rode "npm run setup" (ou "yarn setup") no terminal.',
+      'Algo falló. Mira la pestaña Registros, o ejecuta "npm run setup" (o "yarn setup") en una terminal.',
     ],
     'su.deps.progress': ['Installing {id}... (see the Logs tab)', 'Instalando {id}... (veja a aba Logs)', 'Instalando {id}... (mira la pestaña Registros)'],
     'su.deps.failed': ['Failed: {e}', 'Falhou: {e}', 'Falló: {e}'],
@@ -315,9 +315,9 @@
       'Permiso del sandbox de Electron (Linux) — evita el error "SUID sandbox"',
     ],
     'dep.noPkexec': [
-      'Could not find "pkexec" (password window). In a terminal, run: npm run setup',
-      'Não encontrei o "pkexec" (janela de senha). No terminal, rode: npm run setup',
-      'No encontré "pkexec" (ventana de contraseña). En una terminal, ejecuta: npm run setup',
+      'Could not find "pkexec" (password window). In a terminal, run: npm run setup (or: yarn setup)',
+      'Não encontrei o "pkexec" (janela de senha). No terminal, rode: npm run setup (ou: yarn setup)',
+      'No encontré "pkexec" (ventana de contraseña). En una terminal, ejecuta: npm run setup (o: yarn setup)',
     ],
     'dep.noManager': [
       'No package manager found (apt/dnf/pacman/zypper, Homebrew or winget/choco/scoop).',
@@ -334,6 +334,7 @@
     'ext.noUrl': ['Enter the server URL (e.g. http://127.0.0.1:11434).', 'Informe a URL do servidor (ex.: http://127.0.0.1:11434).', 'Introduce la URL del servidor (p. ej., http://127.0.0.1:11434).'],
     'ext.http': ['The server answered HTTP {status}: {body}', 'O servidor respondeu HTTP {status}: {body}', 'El servidor respondió HTTP {status}: {body}'],
     'ext.noModel': ['Model "{model}" was not found on the server. With Ollama run: ollama pull {model}. Server said: {body}', 'O modelo "{model}" não foi encontrado no servidor. No Ollama rode: ollama pull {model}. O servidor disse: {body}', 'No se encontró el modelo "{model}" en el servidor. Con Ollama ejecuta: ollama pull {model}. El servidor dijo: {body}'],
+    'ext.testing': ['Testing {url} (model {model})…', 'Testando {url} (modelo {model})…', 'Probando {url} (modelo {model})…'],
     'ext.ok': ['Connected to {url} (model {model}).', 'Conectado a {url} (modelo {model}).', 'Conectado a {url} (modelo {model}).'],
     'dlg.portTitle': ['Port in use', 'Porta em uso', 'Puerto en uso'],
     'dlg.portMsg': ['Port {port} is already in use. Switch to a random free port?', 'A porta {port} já está em uso. Trocar por uma porta livre aleatória?', 'El puerto {port} ya está en uso. ¿Cambiar a un puerto libre aleatorio?'],

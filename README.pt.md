@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="Llamafile Brain" width="640" />
+<img src="assets/logo.png" alt="Llamafile Brain" width="600" />
 
 **Converse com os seus próprios arquivos usando IA local — privado, offline e sem nuvem.**
 
@@ -187,19 +187,21 @@ A memória é gravada **apenas** por esses comandos (nunca pelo modelo) e export
 
 ## 🛠️ Desenvolvimento
 
-Requisitos: **Node 20+** (22 recomendado).
+Requisitos: **Node 22.12+** (o app roda no Node do próprio Electron; isso vale para os scripts e testes). Funciona com **npm** ou **yarn** (clássico 1.x ou 2+; no Yarn 2+ o `.yarnrc.yml` incluído já escolhe `node_modules`).
 
 ```bash
 git clone https://github.com/natancabraldev/llamafile-brain.git
 cd llamafile-brain
-npm install
-npm start               # abre o app
-npm test                # testes unitários e de integração
-npm run e2e             # teste ponta a ponta com o Electron real
-npm run setup           # instala OCR/LibreOffice (opcional)
+npm install             # ou: yarn
+npm start               # ou: yarn start      -> abre o app
+npm test                # ou: yarn test       -> testes unitários e de integração
+npm run e2e             # ou: yarn e2e        -> teste ponta a ponta com o Electron real
+npm run setup           # ou: yarn setup      -> instala OCR/LibreOffice (opcional)
 ```
 
-No Linux, se o Electron reclamar do *SUID sandbox*: `npm run start:linux` (ajusta a permissão, pede sudo) ou `npm run start:dev` (sem sandbox, só desenvolvimento).
+> O lockfile oficial do repositório é o `package-lock.json` (usado pelo CI). Se você usa yarn, o seu `yarn.lock` local fica fora do git.
+
+No Linux, se o Electron reclamar do *SUID sandbox*: `npm run start:linux` / `yarn start:linux` (corrige a permissão, pede sudo) ou `npm run start:dev` / `yarn start:dev` (sem sandbox, só para desenvolvimento).
 
 ### Estrutura de pastas
 
@@ -282,10 +284,23 @@ Sugestões são bem-vindas nas [issues](https://github.com/natancabraldev/llamaf
 
 Contribuições são muito bem-vindas! Leia o [CONTRIBUTING.md](CONTRIBUTING.md) e o [Código de Conduta](CODE_OF_CONDUCT.md).
 
-## Licença e autoria
+## Licença
 
-Distribuído sob a licença [MIT](LICENSE).
+Licença MIT.
 
-Criado e mantido por **[Natan Cabral](https://github.com/natancabraldev)**.
+## Autor
+
+<table>
+  <tr>
+    <td>
+      <img src="https://github.com/natancabral.png?s=100" width="100"/>
+    </td>
+    <td>
+      Natan Cabral<br />
+      <a href="mailto:natancabral@hotmail.com">natancabral@hotmail.com</a><br />
+      <a href="https://github.com/natancabral/">https://github.com/natancabral/</a>
+    </td>
+  </tr>
+</table>
 
 > **Aviso:** este é um projeto independente, **sem afiliação com a Mozilla ou com a Mozilla.ai**. *llamafile* é um projeto da Mozilla.ai ([github.com/mozilla-ai/llamafile](https://github.com/mozilla-ai/llamafile)); os modelos têm as suas próprias licenças.
