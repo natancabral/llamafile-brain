@@ -58,7 +58,7 @@ function boot(language = 'en') {
       { id: 'poppler', label: 'dep.poppler', installed: true, command: null },
     ] }),
     installDeps: async (ids) => { calls.push(['install', ids]); return { platform: 'linux', manager: 'apt-get', cancelled: true, results: [], items: [{ id: 'tesseract', label: 'dep.tesseract', installed: false }] }; },
-    ...Object.fromEntries(['onLog', 'onIndexProgress', 'onIndexDone', 'onIndexError', 'onEvalProgress', 'onDelta', 'onSources', 'onWarn', 'onMemoryChanged', 'onServersStatus', 'onDepsProgress', 'onStatsChanged'].map((n) => [n, on(n.replace(/^on/, '').replace(/^./, (c) => c.toLowerCase()))])),
+    ...Object.fromEntries(['onLog', 'onIndexProgress', 'onIndexDone', 'onIndexError', 'onEvalProgress', 'onDelta', 'onSources', 'onWarn', 'onMemoryChanged', 'onServersStatus', 'onDepsProgress', 'onStatsChanged', 'onChatsChanged'].map((n) => [n, on(n.replace(/^on/, '').replace(/^./, (c) => c.toLowerCase()))])),
   };
   window.confirm = () => true;
   window.eval(fs.readFileSync(path.join(root, '..', 'shared', 'i18n.js'), 'utf8'));
@@ -285,4 +285,55 @@ test('saved chats: list on the left, open one, delete, switch profile', async (t
   sel.dispatchEvent(new window.Event('change', { bubbles: true }));
   await tick();
   assert.deepStrictEqual(calls.at(-1), ['profile', 2]);
+});
+
+test('indexing progress bar, step-by-step modal and "server not running" button', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { window, handlers, finishAsk } = boot();
+  await tick();
+  const d = window.document;
+  // progress bar
+  assert.ok(d.getElementById('index-bar').classList.contains('hidden'));
+  handlers.indexProgress({ phase: 'indexing', done: 5, total: 20, file: '/x/contrato.pdf', indexed: 3, unchanged: 1, failed: 1 });
+  assert.ok(!d.getElementById('index-bar').classList.contains('hidden'));
+  assert.strictEqual(d.getElementById('ib-progress').value, 25);
+  assert.strictEqual(d.getElementById('ib-pct').textContent, '25%');
+  assert.match(d.getElementById('ib-line').textContent, /5 of 20 files.*contrato\.pdf/);
+  assert.match(d.getElementById('ib-sub').textContent, /3 new or changed · 1 already known · 1 unreadable/);
+  handlers.indexDone({ result: { files: 20, chunks: 99, indexed: 19, unchanged: 1, skipped: {}, failed: [], warnings: [] }, auto: false });
+  assert.match(d.getElementById('ib-line').textContent, /All done! 20 files · 99 pieces/);
+  assert.ok(d.getElementById('index-bar').classList.contains('done'));
+  // step-by-step is a modal
+  d.getElementById('guide-btn').click();
+  assert.ok(!d.getElementById('guide-modal').classList.contains('hidden'));
+  assert.ok(d.querySelectorAll('#guide .step').length === 4);
+  d.getElementById('guide-close').click();
+  assert.ok(d.getElementById('guide-modal').classList.contains('hidden'));
+  // server down: button opens settings
+  d.getElementById('input').value = 'oi';
+  d.getElementById('form').dispatchEvent(new window.Event('submit', { cancelable: true, bubbles: true }));
+  await tick();
+  window.api.ask = null;
+  handlers.warn('Could not connect to http://127.0.0.1:8081 (ECONNREFUSED). The server is not running.');
+  const btn = d.querySelector('.msg.assistant .msg-action');
+  assert.ok(btn, 'button shown next to the warning');
+  btn.click();
+  assert.ok(!d.getElementById('modal').classList.contains('hidden'));
+  assert.ok(d.querySelector('[data-panel="servers"]') && !d.querySelector('[data-panel="servers"]').classList.contains('hidden'));
+  finishAsk({ answer: 'ok', sources: [] });
+});
+
+test('a new chat appears in the left list as soon as the question is sent', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { window, handlers, finishAsk } = boot();
+  await tick();
+  const d = window.document;
+  d.getElementById('input').value = 'resuma o contrato';
+  d.getElementById('form').dispatchEvent(new window.Event('submit', { cancelable: true, bubbles: true }));
+  await tick();
+  handlers.chatsChanged({ profiles: [], activeProfile: 1, conversationId: 9, conversations: [{ id: 9, title: 'resuma o contrato', updated_at: 2 }, { id: 7, title: 'Old chat', updated_at: 1 }] });
+  const items = [...d.querySelectorAll('#chat-list li')];
+  assert.strictEqual(items.length, 2);
+  assert.ok(items[0].classList.contains('active') && /resuma o contrato/.test(items[0].textContent));
+  finishAsk({ answer: 'ok', sources: [], conversationId: 9 });
 });

@@ -101,11 +101,22 @@ function reapOrphans() {
  * On Windows the file must end in .exe (and be < 4 GB; otherwise use the llamafile binary + external GGUF via args).
  */
 class LlamafileServer {
-  constructor({ name, onLog }) {
+  constructor({ name, onLog, onStatus }) {
     this.name = name;
     this.onLog = onLog || (() => {});
+    this.onStatus = onStatus || (() => {});
     this.proc = null;
-    this.status = 'stopped'; // stopped | starting | running | error
+    this._status = 'stopped';
+  }
+
+  /** stopped | starting | running | error. Every change is reported, so the UI never misses one (crash, stop, ready...). */
+  get status() {
+    return this._status;
+  }
+  set status(v) {
+    if (v === this._status) return;
+    this._status = v;
+    this.onStatus(v);
   }
 
   /** Idempotent: a second call while starting waits for the first one instead of doing nothing. */

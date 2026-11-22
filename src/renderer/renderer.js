@@ -75,7 +75,11 @@ function closeSettings() {
 $('settings-btn').onclick = () => openSettings();
 $('modal-close').onclick = closeSettings;
 modal.addEventListener('mousedown', (e) => e.target === modal && closeSettings());
-document.addEventListener('keydown', (e) => e.key === 'Escape' && !modal.classList.contains('hidden') && closeSettings());
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (guideOpen()) closeGuide();
+  else if (!modal.classList.contains('hidden')) closeSettings();
+});
 
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
@@ -94,31 +98,39 @@ $('theme-btn').onclick = () => {
 };
 initTheme();
 
-// ---------------------------------------------------------------- step-by-step guide
+// ---------------------------------------------------------------- step-by-step guide (modal)
+const guideModal = $('guide-modal');
+const guideOpen = () => !guideModal.classList.contains('hidden');
+function openGuide() {
+  renderGuide();
+  guideModal.classList.remove('hidden');
+  $('guide-close').focus();
+}
+function closeGuide() {
+  guideModal.classList.add('hidden');
+  try { localStorage.setItem('lfb-guide-seen', '1'); } catch {}
+}
+$('guide-btn').onclick = openGuide;
+$('guide-close').onclick = closeGuide;
+guideModal.addEventListener('mousedown', (e) => e.target === guideModal && closeGuide());
 function renderGuide() {
   const g = $('guide');
   if (!state) return;
-  if (chatActive && !guideForced) {
-    g.classList.add('hidden');
-    return;
-  }
   const sv = state.servers || {};
   const st = state.settings || {};
   const chatCfg = st.chat || {};
   const steps = [
-    { n: 1, done: sv.chat === 'running' || !!chatCfg.file || chatCfg.mode === 'external', open: () => openSettings('servers') },
-    { n: 2, done: sv.chat === 'running' && sv.embed === 'running', open: () => openSettings('servers') },
+    { n: 1, done: sv.chat === 'running' || !!chatCfg.file || chatCfg.mode === 'external', open: () => { closeGuide(); openSettings('servers'); } },
+    { n: 2, done: sv.chat === 'running' && sv.embed === 'running', open: () => { closeGuide(); openSettings('servers'); } },
     { n: 3, done: (st.folders || []).length > 0, open: async () => { renderFolders(await window.api.addFolder()); renderGuide(); } },
-    { n: 4, done: (lastStats?.chunks || 0) > 0, open: () => { openSettings('knowledge'); $('index-run').click(); } },
+    { n: 4, done: (lastStats?.chunks || 0) > 0, open: () => { closeGuide(); $('index-run').click(); } },
   ];
   const cur = steps.findIndex((x) => !x.done);
   g.replaceChildren();
   if (cur === -1) {
     g.append(el('p', 'guide-ready', tr('guide.ready')));
-    g.classList.toggle('hidden', !guideForced);
     return;
   }
-  g.classList.remove('hidden');
   g.append(el('h2', null, tr('guide.title')), el('p', 'sub', tr('guide.sub')));
   steps.forEach((x, i) => {
     const row = el('div', `step${x.done ? ' done' : ''}${i === cur ? ' current' : ''}`);
@@ -134,14 +146,19 @@ function renderGuide() {
     g.append(row);
   });
 }
-let guideForced = false;
-let chatActive = false; // a conversation is on screen: hide the setup guide
-$('guide-btn').onclick = () => {
-  guideForced = true;
-  renderGuide();
-  $('guide').classList.remove('hidden');
-  $('messages').scrollTop = 0;
-};
+/** First launch with the setup unfinished: show the guide once. */
+function maybeAutoGuide() {
+  let seen = false;
+  try { seen = !!localStorage.getItem('lfb-guide-seen'); } catch {}
+  if (seen) return;
+  const incomplete = !(state.servers?.chat === 'running' && (lastStats?.chunks || 0) > 0);
+  if (incomplete) openGuide();
+}
+
+for (const id of ['pill-chat', 'pill-embed']) {
+  $(id).addEventListener('click', () => openSettings('servers'));
+  $(id).addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openSettings('servers')));
+}
 
 // ---------------------------------------------------------------- settings <-> inputs (data-s="a.b.c")
 const getPath = (obj, p) => p.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
@@ -230,8 +247,8 @@ async function refreshCtx() {
 // ---------------------------------------------------------------- servers
 function toggleMode(block) {
   const ext = block.querySelector('[data-k="mode"]').value === 'external';
-  block.querySelector('.spawn').classList.toggle('hidden', ext);
-  block.querySelector('.external').classList.toggle('hidden', !ext);
+  block.querySelectorAll('.spawn').forEach((n) => n.classList.toggle('hidden', ext));
+  block.querySelectorAll('.external').forEach((n) => n.classList.toggle('hidden', !ext));
 }
 
 function buildServers() {
@@ -299,6 +316,9 @@ function setStatus(st) {
     trackStarting(b, s);
     const start = b.querySelector('.start');
     if (start) start.disabled = s === 'starting' || s === 'running'; // already starting/running: no need to click again
+    const stop = b.querySelector('.stop');
+    if (stop) stop.disabled = s === 'stopped';
+    b.dataset.status = s;
   });
   for (const k of ['chat', 'embed']) {
     const pill = $(`pill-${k}`);
@@ -378,17 +398,85 @@ $('index-run').onclick = async () => {
     $('index-run').disabled = true;
     await window.api.runIndex(); // result is shown by the index-done event
   } catch (e) {
-    $('index-status').textContent = tr('idx.failed', { e: e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') });
+    const m = tr('idx.failed', { e: e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') });
+    $('index-status').textContent = m;
+    barError(m);
   } finally {
     $('index-run').disabled = false;
   }
 };
+// ---- indexing progress bar (bottom of the home screen)
+const ib = { t0: 0, hide: null };
+const fmtTime = (sec) => {
+  sec = Math.max(0, Math.round(sec));
+  return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s`;
+};
+function showBar(kind = '') {
+  clearTimeout(ib.hide);
+  $('index-bar').className = `index-bar ${kind}`.trim();
+}
+function hideBar() {
+  $('index-bar').classList.add('hidden');
+}
+function barProgress(p) {
+  showBar();
+  if (!ib.t0) ib.t0 = Date.now();
+  const bar = $('ib-progress');
+  $('ib-title').textContent = tr('ib.title');
+  $('ib-cancel').classList.remove('hidden');
+  if (p.phase === 'scan' || p.phase === 'embed' || !p.total) {
+    bar.removeAttribute('value');
+    $('ib-pct').textContent = '';
+    $('ib-line').textContent = tr(p.phase === 'embed' ? 'ib.embed' : 'ib.scan');
+    $('ib-sub').textContent = '';
+    return;
+  }
+  const pct = Math.min(100, Math.floor((p.done / p.total) * 100));
+  bar.value = pct;
+  $('ib-pct').textContent = `${pct}%`;
+  const file = p.file ? p.file.split(/[\\/]/).pop() : '';
+  $('ib-line').textContent = `${tr('ib.files', { done: p.done, total: p.total })}${file ? ` · ${tr('ib.current', { file })}` : ''}`;
+  const el_s = (Date.now() - ib.t0) / 1000;
+  const parts = [tr('ib.elapsed', { t: fmtTime(el_s) })];
+  if (p.done >= 2 && el_s > 3) parts.push(tr('ib.eta', { t: fmtTime((el_s / p.done) * (p.total - p.done)) }));
+  parts.push(tr('ib.counts', { indexed: p.indexed || 0, unchanged: p.unchanged || 0, failed: p.failed || 0 }));
+  $('ib-sub').textContent = parts.join(' · ');
+}
+function barDone(r) {
+  const secs = ib.t0 ? (Date.now() - ib.t0) / 1000 : 0;
+  ib.t0 = 0;
+  showBar(r.failed?.length ? '' : 'done');
+  $('ib-progress').value = 100;
+  $('ib-pct').textContent = '100%';
+  $('ib-title').textContent = '✓ ' + tr('ib.title');
+  $('ib-line').textContent = tr('ib.done', { files: r.files ?? r.scanned ?? 0, chunks: r.chunks ?? 0 });
+  $('ib-sub').textContent = [tr('ib.doneNote', { indexed: r.indexed, unchanged: r.unchanged }), secs ? fmtTime(secs) : ''].filter(Boolean).join(' · ') +
+    (r.failed?.length ? ` · ${tr('ib.counts', { indexed: r.indexed, unchanged: r.unchanged, failed: r.failed.length })}` : '');
+  $('ib-cancel').classList.add('hidden');
+  if (!r.failed?.length) ib.hide = setTimeout(hideBar, 8000); // problems stay until closed
+}
+function barError(msg) {
+  ib.t0 = 0;
+  showBar('error');
+  $('ib-progress').value = 0;
+  $('ib-pct').textContent = '';
+  $('ib-title').textContent = tr('ib.failed');
+  $('ib-line').textContent = msg;
+  $('ib-sub').textContent = '';
+  $('ib-cancel').classList.add('hidden');
+}
+$('ib-close').onclick = hideBar;
+$('ib-cancel').onclick = () => window.api.cancelIndex();
+$('ib-details').onclick = () => openSettings('knowledge');
+
 window.api.onIndexProgress((p) => {
   $('index-status').textContent =
-    p.phase === 'done' ? tr('idx.done') : tr('idx.progress', { done: p.done, total: p.total, file: p.file ? p.file.split(/[\\/]/).pop() : '' });
+    p.phase === 'done' ? tr('idx.done') : p.phase === 'indexing' ? tr('idx.progress', { done: p.done, total: p.total, file: p.file ? p.file.split(/[\\/]/).pop() : '' }) : '';
+  if (p.phase !== 'done') barProgress(p);
 });
 window.api.onIndexDone(({ result: r, auto }) => {
   showStats(r);
+  barDone(r);
   const lines = [auto ? tr('idx.doneAuto') : tr('idx.done'), tr('idx.counts', { indexed: r.indexed, unchanged: r.unchanged })];
   const sk = Object.entries(r.skipped || {}).map(([ext, n]) => `${n}× ${ext}`);
   if (sk.length) lines.push(tr('idx.skippedTypes', { list: sk.join(', ') }));
@@ -398,6 +486,7 @@ window.api.onIndexDone(({ result: r, auto }) => {
 });
 window.api.onIndexError(({ message }) => {
   $('index-status').textContent = tr('idx.autoFail', { e: message });
+  barError(tr('idx.autoFail', { e: message }));
 });
 
 // ---------------------------------------------------------------- memory
@@ -546,9 +635,20 @@ window.api.onLog(({ source, text }) => {
 const messages = $('messages');
 const scroll = () => (messages.scrollTop = messages.scrollHeight);
 
+// "Server not running" messages get a button that opens the Servers settings.
+const refusedStarts = () => I18N.ORDER.map((l) => I18N.t('net.refused', { where: '\u0000', code: '\u0001' }, l).split('\u0000')[0]);
+const isServerDown = (msg) => refusedStarts().some((p) => p && String(msg).includes(p));
+function addServerButton(container, msg) {
+  if (!isServerDown(msg) || container.querySelector('.msg-action')) return;
+  const b = el('button', 'msg-action primary', tr('ui.openServers'));
+  b.type = 'button';
+  b.onclick = () => openSettings('servers');
+  container.append(b);
+}
 function addNote(text) {
   const d = el('div', 'msg error');
   d.textContent = text;
+  addServerButton(d, text);
   messages.append(d);
   scroll();
 }
@@ -589,7 +689,9 @@ window.api.onDelta((t) => {
   armIdle();
 });
 window.api.onWarn((w) => {
-  if (cur) cur.d.append(el('div', 'warn', `⚠ ${w}`));
+  if (!cur) return;
+  cur.d.append(el('div', 'warn', `⚠ ${w}`));
+  addServerButton(cur.d, w);
 });
 
 function addSources(div, sources) {
@@ -631,9 +733,6 @@ $('form').onsubmit = async (e) => {
   if (!q || busy || updateTokenCount()) return;
   $('input').value = '';
   updateTokenCount();
-  guideForced = false;
-  chatActive = true;
-  $('guide').classList.add('hidden');
   const u = el('div', 'msg user');
   u.textContent = q; // user text stays plain text
   messages.append(u);
@@ -664,6 +763,7 @@ $('form').onsubmit = async (e) => {
       cur.d.classList.add('error');
       cur.raw += `\n\n${tr('chat.error', { e: msg })}`;
       renderMarkdown(cur.body, cur.raw);
+      addServerButton(cur.d, msg);
     }
   } finally {
     cur = null;
@@ -684,14 +784,11 @@ let convId = null; // open conversation (null = a new chat, created on the first
 let chats = { profiles: [], activeProfile: 0, conversations: [] };
 
 function showEmptyChat() {
-  messages.replaceChildren($('guide'));
-  chatActive = false;
-  renderGuide();
+  messages.replaceChildren();
 }
 function newChat() {
   if (busy) window.api.cancelChat();
   convId = null;
-  guideForced = false;
   showEmptyChat();
   renderChatList();
   $('input').focus();
@@ -700,9 +797,7 @@ async function openChat(id) {
   if (busy) window.api.cancelChat();
   const msgs = await window.api.getChat(id);
   convId = id;
-  chatActive = true;
-  messages.replaceChildren($('guide'));
-  $('guide').classList.add('hidden');
+  messages.replaceChildren();
   for (const m of msgs) {
     if (m.role === 'user') {
       messages.append(el('div', 'msg user', m.content));
@@ -825,6 +920,11 @@ $('prof-add').onclick = async () => {
   refreshMemories();
 };
 window.api.onStatsChanged(showStats);
+window.api.onChatsChanged((s) => {
+  chats = { ...chats, ...s };
+  if (busy && !convId) convId = s.conversationId; // first question of a new chat: highlight it already
+  renderChatList();
+});
 
 // ---------------------------------------------------------------- init
 async function init() {
@@ -843,6 +943,7 @@ async function init() {
   refreshMemories();
   chats = await window.api.chatsState();
   renderChatbar();
+  maybeAutoGuide();
 }
 // Language selector: saves the setting (main process switches its own language too) and re-renders everything.
 function relocalize() {

@@ -65,8 +65,9 @@ let lastMemKey = null;
 let watchers = [];
 let watchTimer = null;
 
+let broadcastServers = () => {}; // set in registerIpc: pushes every server status change to the UI
 const servers = Object.fromEntries(
-  SERVERS.map((n) => [n, new LlamafileServer({ name: n, onLog: (src, t) => send('log', { source: src, text: t }) })]),
+  SERVERS.map((n) => [n, new LlamafileServer({ name: n, onLog: (src, t) => send('log', { source: src, text: t }), onStatus: () => broadcastServers() })]),
 );
 
 function send(channel, payload) {
@@ -231,6 +232,7 @@ async function runIndex({ auto = false } = {}) {
     const es = settings.embed;
     if (es.mode === 'spawn' && es.file && servers.embed.status !== 'running') {
       log('index', t('idx.embedStart'));
+      send('index-progress', { phase: 'embed', done: 0, total: 0 });
       send('servers-status', state().servers);
       try {
         await servers.embed.start({ file: es.file, port: es.port, args: es.args, embedding: true, gpu: es.gpu });
@@ -337,6 +339,7 @@ function registerIpc() {
     defaultDbDir: path.join(userDir, 'brain'),
   });
 
+  broadcastServers = () => send('servers-status', state().servers);
   ipcMain.handle('settings:get', () => state());
   // RAM numbers for the "memory / context size" advice (works the same on Linux, macOS and Windows)
   ipcMain.handle('sys:memory', (_e, file) => {
@@ -454,8 +457,8 @@ function registerIpc() {
       saveSettings();
       log(which, t('dlg.portChanged', { port }));
     }
-    send('servers-status', state().servers);
     try {
+      // start() marks "starting" synchronously (and broadcasts it); sending before it would push a stale "stopped" to the UI
       await servers[which].start({ file: s.file, port: s.port, args: s.args, embedding: which === 'embed', gpu: s.gpu });
     } finally {
       send('servers-status', state().servers);
@@ -613,6 +616,7 @@ function registerIpc() {
     }
     const hist = database.getMessages(convId).map((m) => ({ role: m.role, content: m.content }));
     database.addMessage(convId, 'user', question);
+    send('chats-changed', { ...chatsState(), conversationId: convId }); // the chat shows up in the left list right away
     const prof = database.getProfile(database.profileId);
     try {
       const r = await ask({

@@ -302,6 +302,7 @@ async function indexInner({ roots, db, embedUrl, embedModel, ignore = [], ocr, o
   }
   const imagesOn = !!ocrOn;
 
+  onProgress?.({ phase: 'scan', done: 0, total: 0 });
   for (const { dir, kind } of roots) {
     for (const file of walk(dir, dir, ignored)) {
       if (seen.has(file)) continue;
@@ -338,7 +339,7 @@ async function indexInner({ roots, db, embedUrl, embedModel, ignore = [], ocr, o
   let unchanged = 0;
   for (const { file, kind, stat } of todo) {
     if (signal?.aborted) break;
-    onProgress?.({ phase: 'indexing', done, total: todo.length, file });
+    onProgress?.({ phase: 'indexing', done, total: todo.length, file, indexed, unchanged, failed: failed.length });
     done++;
 
     const meta = db.getFile(file);
@@ -374,13 +375,13 @@ async function indexInner({ roots, db, embedUrl, embedModel, ignore = [], ocr, o
         .slice(i, i + batchSize)
         .map((c) => `File: ${name}\n${c.title ? `Section: ${c.title}\n` : ''}\n${c.text}`.slice(0, 2000));
       vectors.push(...(await embed(embedUrl, batch, { model: embedModel, signal })));
-      onProgress?.({ phase: 'indexing', done, total: todo.length, file }); // batch finished = progress was made
+      onProgress?.({ phase: 'indexing', done, total: todo.length, file, indexed, unchanged, failed: failed.length }); // batch finished = progress was made
     }
     db.addFile({ path: file, hash, mtime: stat.mtimeMs, size: stat.size, kind, chunks, vectors });
     indexed++;
   }
 
-  onProgress?.({ phase: 'done', done: todo.length, total: todo.length });
+  onProgress?.({ phase: 'done', done: todo.length, total: todo.length, indexed, unchanged, failed: failed.length });
   return { scanned: todo.length, indexed, unchanged, skipped, failed, warnings, ...db.stats() };
 }
 

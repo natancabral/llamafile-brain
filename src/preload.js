@@ -65,4 +65,5 @@ contextBridge.exposeInMainWorld('api', {
   onMemoryChanged: on('memory-changed'),
   onServersStatus: on('servers-status'),
   onStatsChanged: on('stats-changed'),
+  onChatsChanged: on('chats-changed'),
 });

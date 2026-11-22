@@ -7,6 +7,16 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="guide-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="guide-title">
+   <div class="modal-card guide-card">
+    <div class="modal-head">
+      <h1 id="guide-title"><span data-icon="guide" aria-hidden="true"></span> <span data-i18n="ui.guide">Step by step</span></h1>
+      <button id="guide-close" class="icon-btn" type="button" data-i18n-title="ui.close" title="Close" aria-label="Close">✕</button>
+    </div>
+    <div class="guide-body"><section id="guide"></section></div>
+   </div>
+  </div>
+
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
    <div class="modal-card">
     <div class="modal-head">
@@ -179,8 +189,8 @@
       <button id="menu-btn" class="icon-btn" type="button" data-icon="menu" data-i18n-title="ui.menu" title="Chats" aria-label="Chats"></button>
       <div class="brand"><img src="../../assets/icon.svg" alt="" width="28" height="28" /><h1>Llamafile Brain</h1></div>
       <div class="pills">
-        <span class="pill" id="pill-chat"><i></i><span data-i18n="srv.chat.title">Chat</span></span>
-        <span class="pill" id="pill-embed"><i></i><span data-i18n="srv.embed.title">Embeddings</span></span>
+        <span class="pill" id="pill-chat" role="button" tabindex="0"><i></i><span data-i18n="srv.chat.title">Chat</span></span>
+        <span class="pill" id="pill-embed" role="button" tabindex="0"><i></i><span data-i18n="srv.embed.title">Embeddings</span></span>
       </div>
       <div class="top-actions">
         <button id="guide-btn" type="button" data-i18n="ui.guide" data-icon="guide">Guide</button>
@@ -194,7 +204,21 @@
         <button id="settings-btn" type="button" class="primary" data-i18n="ui.settings" data-icon="settings">Settings</button>
       </div>
     </header>
-    <div id="messages"><section id="guide"></section></div>
+    <div id="messages"></div>
+    <div id="index-bar" class="index-bar hidden" role="status" aria-live="polite">
+      <div class="ib-top">
+        <b id="ib-title"></b>
+        <span id="ib-pct" class="ib-pct"></span>
+        <span class="ib-actions">
+          <button id="ib-details" type="button" data-i18n="ib.details">Details</button>
+          <button id="ib-cancel" type="button" data-i18n="kn.cancel">Cancel</button>
+          <button id="ib-close" class="icon-btn" type="button" data-i18n-title="ib.close" title="Close" aria-label="Close">✕</button>
+        </span>
+      </div>
+      <progress id="ib-progress" max="100" value="0"></progress>
+      <div id="ib-line" class="ib-line"></div>
+      <div id="ib-sub" class="muted"></div>
+    </div>
     <div id="token-count" class="token-count muted"></div>
     <form id="form">
       <textarea id="input" rows="2" data-i18n-ph="chat.ph" placeholder="Ask, chat or say &quot;remember that ...&quot;  (Enter sends, Shift+Enter new line)"></textarea>
@@ -205,7 +229,14 @@
 
   <template id="srv-tpl">
     <div class="srv">
-      <div class="row"><strong class="srv-title"></strong><span class="badge">stopped</span></div>
+      <div class="srv-head">
+        <strong class="srv-title"></strong>
+        <span class="badge">stopped</span>
+        <span class="srv-btns">
+          <button class="start" type="button" data-i18n="srv.start">Start</button>
+          <button class="stop" type="button" data-i18n="srv.stop">Stop</button>
+        </span>
+      </div>
       <p class="help srv-hint"></p>
       <label><span data-i18n="srv.mode">Mode</span>
         <select data-k="mode">
@@ -217,27 +248,31 @@
         <label><span data-i18n="srv.file">llamafile file</span>
           <div class="row"><input data-k="file" readonly /><button class="pick" type="button">…</button></div>
         </label>
-        <div class="row2">
-          <label><span data-i18n="srv.port">Port</span> <input type="number" data-k="port" /></label>
-        </div>
-        <label><span data-i18n="srv.gpu">Processing (GPU)</span>
-          <select data-k="gpu">
-            <option value="auto" data-i18n="srv.gpu.auto">Automatic (llamafile decides)</option>
-            <option value="on" data-i18n="srv.gpu.on">Use GPU (all layers)</option>
-            <option value="off" data-i18n="srv.gpu.off">CPU only (no GPU)</option>
-          </select>
-        </label>
         <label class="ctx-wrap hidden"><span data-i18n="srv.ctx">Conversation memory (context size)</span>
           <select class="ctx-select"></select>
         </label>
         <p class="help ctx-hint hidden"></p>
-        <label><span data-i18n="srv.args">Extra arguments</span> <input data-k="args" /></label>
       </div>
       <div class="external hidden">
         <label><span data-i18n="srv.url">URL</span> <input data-k="url" placeholder="http://127.0.0.1:11434" /></label>
       </div>
-      <label><span data-i18n="srv.model">Model name</span> <input data-k="model" /></label>
-      <div class="row"><button class="start" type="button" data-i18n="srv.start">Start</button><button class="stop" type="button" data-i18n="srv.stop">Stop</button></div>
+      <details class="adv">
+        <summary data-i18n="srv.more">More settings</summary>
+        <div class="spawn">
+          <div class="row2">
+            <label><span data-i18n="srv.port">Port</span> <input type="number" data-k="port" /></label>
+          </div>
+          <label><span data-i18n="srv.gpu">Processing (GPU)</span>
+            <select data-k="gpu">
+              <option value="auto" data-i18n="srv.gpu.auto">Automatic (llamafile decides)</option>
+              <option value="on" data-i18n="srv.gpu.on">Use GPU (all layers)</option>
+              <option value="off" data-i18n="srv.gpu.off">CPU only (no GPU)</option>
+            </select>
+          </label>
+          <label><span data-i18n="srv.args">Extra arguments</span> <input data-k="args" /></label>
+        </div>
+        <label><span data-i18n="srv.model">Model name</span> <input data-k="model" /></label>
+      </details>
     </div>
   </template>
 
