@@ -53,6 +53,7 @@ class BrainDB {
     this.db = openDatabase(file);
     this._migrate();
     this._cache = null;
+    this.profileId = this.defaultProfileId(); // memories and chats are scoped to the active profile
   }
 
   close() {
@@ -79,7 +80,108 @@ class BrainDB {
         id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, created_at INTEGER
       );
       CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(text, tokenize='unicode61 remove_diacritics 2');
+      CREATE TABLE IF NOT EXISTS profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, instructions TEXT NOT NULL DEFAULT '', created_at INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS conversations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, profile_id INTEGER NOT NULL, title TEXT NOT NULL,
+        created_at INTEGER, updated_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS conversations_profile ON conversations(profile_id, updated_at);
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id INTEGER NOT NULL, role TEXT NOT NULL,
+        content TEXT NOT NULL, sources TEXT, created_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS messages_conv ON messages(conversation_id, id);
     `);
+    if (!this.db.prepare('PRAGMA table_info(memories)').all().some((c) => c.name === 'profile_id')) {
+      this.db.exec('ALTER TABLE memories ADD COLUMN profile_id INTEGER');
+    }
+    if (!this.db.prepare('SELECT 1 x FROM profiles LIMIT 1').get()) {
+      this.db.prepare('INSERT INTO profiles(name, instructions, created_at) VALUES(?,?,?)').run(tr('prof.default'), '', Date.now());
+    }
+    this.db.prepare('UPDATE memories SET profile_id = ? WHERE profile_id IS NULL').run(this.defaultProfileId());
+  }
+
+  // ---------------------------------------------------------------- profiles (separate contexts: work, personal...)
+  defaultProfileId() {
+    return this.db.prepare('SELECT id FROM profiles ORDER BY id LIMIT 1').get().id;
+  }
+  listProfiles() {
+    return this.db.prepare('SELECT id, name, instructions FROM profiles ORDER BY id').all();
+  }
+  getProfile(id) {
+    return this.db.prepare('SELECT id, name, instructions FROM profiles WHERE id = ?').get(id);
+  }
+  setProfile(id) {
+    this.profileId = this.getProfile(id) ? id : this.defaultProfileId();
+    return this.profileId;
+  }
+  createProfile(name, instructions = '') {
+    const n = String(name || '').trim().slice(0, 60);
+    if (!n) throw new Error(tr('prof.nameEmpty'));
+    const r = this.db.prepare('INSERT INTO profiles(name, instructions, created_at) VALUES(?,?,?)').run(n, String(instructions).slice(0, 1500), Date.now());
+    return Number(r.lastInsertRowid);
+  }
+  updateProfile(id, { name, instructions }) {
+    const cur = this.getProfile(id);
+    if (!cur) return;
+    const n = name == null ? cur.name : String(name).trim().slice(0, 60) || cur.name;
+    const ins = instructions == null ? cur.instructions : String(instructions).slice(0, 1500);
+    this.db.prepare('UPDATE profiles SET name = ?, instructions = ? WHERE id = ?').run(n, ins, id);
+  }
+  /** Deletes a profile with its chats and memories. The last remaining profile cannot be deleted. */
+  deleteProfile(id) {
+    if (this.listProfiles().length <= 1) throw new Error(tr('prof.last'));
+    this._tx(() => {
+      this.db.prepare('DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE profile_id = ?)').run(id);
+      this.db.prepare('DELETE FROM conversations WHERE profile_id = ?').run(id);
+      this.db.prepare('DELETE FROM memories_fts WHERE rowid IN (SELECT id FROM memories WHERE profile_id = ?)').run(id);
+      this.db.prepare('DELETE FROM memories WHERE profile_id = ?').run(id);
+      this.db.prepare('DELETE FROM profiles WHERE id = ?').run(id);
+    });
+    if (this.profileId === id) this.profileId = this.defaultProfileId();
+  }
+
+  // ---------------------------------------------------------------- conversations (saved chats of the active profile)
+  listConversations() {
+    return this.db
+      .prepare('SELECT id, title, updated_at FROM conversations WHERE profile_id = ? ORDER BY updated_at DESC, id DESC')
+      .all(this.profileId);
+  }
+  createConversation(title = '') {
+    const now = Date.now();
+    const r = this.db.prepare('INSERT INTO conversations(profile_id, title, created_at, updated_at) VALUES(?,?,?,?)').run(this.profileId, String(title).trim().slice(0, 80) || tr('chat.newTitle'), now, now);
+    return Number(r.lastInsertRowid);
+  }
+  getMessages(conversationId) {
+    const own = this.db.prepare('SELECT 1 x FROM conversations WHERE id = ? AND profile_id = ?').get(conversationId, this.profileId);
+    if (!own) return [];
+    return this.db
+      .prepare('SELECT id, role, content, sources FROM messages WHERE conversation_id = ? ORDER BY id')
+      .all(conversationId)
+      .map((m) => ({ ...m, sources: m.sources ? JSON.parse(m.sources) : [] }));
+  }
+  addMessage(conversationId, role, content, sources = null) {
+    const now = Date.now();
+    this.db.prepare('INSERT INTO messages(conversation_id, role, content, sources, created_at) VALUES(?,?,?,?,?)').run(conversationId, role, content, sources && sources.length ? JSON.stringify(sources) : null, now);
+    this.db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, conversationId);
+  }
+  renameConversation(id, title) {
+    const t = String(title).trim().slice(0, 80);
+    if (t) this.db.prepare('UPDATE conversations SET title = ? WHERE id = ? AND profile_id = ?').run(t, id, this.profileId);
+  }
+  deleteConversation(id) {
+    this._tx(() => {
+      this.db.prepare('DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE id = ? AND profile_id = ?)').run(id, this.profileId);
+      this.db.prepare('DELETE FROM conversations WHERE id = ? AND profile_id = ?').run(id, this.profileId);
+    });
+  }
+  deleteAllConversations() {
+    this._tx(() => {
+      this.db.prepare('DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE profile_id = ?)').run(this.profileId);
+      this.db.prepare('DELETE FROM conversations WHERE profile_id = ?').run(this.profileId);
+    });
   }
 
   _tx(fn) {
@@ -165,7 +267,7 @@ class BrainDB {
   stats() {
     const files = this.db.prepare('SELECT COUNT(*) n FROM files').get().n;
     const chunks = this.db.prepare('SELECT COUNT(*) n FROM chunks').get().n;
-    const memories = this.db.prepare('SELECT COUNT(*) n FROM memories').get().n;
+    const memories = this.db.prepare('SELECT COUNT(*) n FROM memories WHERE profile_id = ?').get(this.profileId).n;
     return { files, chunks, memories, dim: Number(this._getMeta('dim')) || 0, dbFile: this.file };
   }
 
@@ -277,20 +379,21 @@ class BrainDB {
     const existing = this.listMemories().find((m) => norm(m.text) === norm(t));
     if (existing) return { ...existing, duplicate: true };
     const created = Date.now();
-    const r = this.db.prepare('INSERT INTO memories(text, created_at) VALUES(?,?)').run(t, created);
+    const r = this.db.prepare('INSERT INTO memories(text, created_at, profile_id) VALUES(?,?,?)').run(t, created, this.profileId);
     const id = Number(r.lastInsertRowid);
     this.db.prepare('INSERT INTO memories_fts(rowid,text) VALUES(?,?)').run(id, t);
     return { id, text: t, created_at: created };
   }
   listMemories() {
-    return this.db.prepare('SELECT id, text, created_at FROM memories ORDER BY id DESC').all();
+    return this.db.prepare('SELECT id, text, created_at FROM memories WHERE profile_id = ? ORDER BY id DESC').all(this.profileId);
   }
   deleteMemory(id) {
-    this.db.prepare('DELETE FROM memories_fts WHERE rowid = ?').run(id);
-    return this.db.prepare('DELETE FROM memories WHERE id = ?').run(id).changes > 0;
+    this.db.prepare('DELETE FROM memories_fts WHERE rowid IN (SELECT id FROM memories WHERE id = ? AND profile_id = ?)').run(id, this.profileId);
+    return this.db.prepare('DELETE FROM memories WHERE id = ? AND profile_id = ?').run(id, this.profileId).changes > 0;
   }
   clearMemories() {
-    this.db.exec('DELETE FROM memories_fts; DELETE FROM memories;');
+    this.db.prepare('DELETE FROM memories_fts WHERE rowid IN (SELECT id FROM memories WHERE profile_id = ?)').run(this.profileId);
+    this.db.prepare('DELETE FROM memories WHERE profile_id = ?').run(this.profileId);
   }
   findMemories(needle) {
     const n = norm(needle);
@@ -301,7 +404,7 @@ class BrainDB {
     if (!q) return [];
     try {
       const ids = this.db.prepare('SELECT rowid AS id FROM memories_fts WHERE memories_fts MATCH ? ORDER BY bm25(memories_fts) LIMIT ?').all(q, k);
-      return ids.map((r) => this.db.prepare('SELECT id, text, created_at FROM memories WHERE id = ?').get(r.id)).filter(Boolean);
+      return ids.map((r) => this.db.prepare('SELECT id, text, created_at FROM memories WHERE id = ? AND profile_id = ?').get(r.id, this.profileId)).filter(Boolean);
     } catch {
       return [];
     }

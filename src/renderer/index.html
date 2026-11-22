@@ -10,18 +10,19 @@
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
    <div class="modal-card">
     <div class="modal-head">
-      <h1 id="settings-title"><span aria-hidden="true">⚙️</span> <span data-i18n="ui.settings">Settings</span></h1>
+      <h1 id="settings-title"><span data-icon="settings" aria-hidden="true"></span> <span data-i18n="ui.settings">Settings</span></h1>
       <button id="modal-close" class="icon-btn" type="button" data-i18n-title="ui.close" title="Close" aria-label="Close">✕</button>
     </div>
     <div class="modal-body">
     <nav id="tabs">
-      <button data-i18n="tab.servers" data-tab="servers" data-icon="🖥️" class="active">Servers</button>
-      <button data-i18n="tab.knowledge" data-tab="knowledge" data-icon="📚">Knowledge</button>
-      <button data-i18n="tab.memory" data-tab="memory" data-icon="💭">Memory</button>
-      <button data-i18n="tab.search" data-tab="search" data-icon="🔎">Search</button>
-      <button data-i18n="tab.eval" data-tab="eval" data-icon="🧪">Evaluation</button>
-      <button data-i18n="tab.setup" data-tab="setup" data-icon="🧰">Setup</button>
-      <button data-i18n="tab.logs" data-tab="logs" data-icon="📜">Logs</button>
+      <button data-i18n="tab.servers" data-tab="servers" data-icon="servers" class="active">Servers</button>
+      <button data-i18n="tab.knowledge" data-tab="knowledge" data-icon="knowledge">Knowledge</button>
+      <button data-i18n="tab.profiles" data-tab="profiles" data-icon="user">Profiles</button>
+      <button data-i18n="tab.memory" data-tab="memory" data-icon="memory">Memory</button>
+      <button data-i18n="tab.search" data-tab="search" data-icon="search">Search</button>
+      <button data-i18n="tab.eval" data-tab="eval" data-icon="eval">Evaluation</button>
+      <button data-i18n="tab.setup" data-tab="setup" data-icon="setup">Setup</button>
+      <button data-i18n="tab.logs" data-tab="logs" data-icon="logs">Logs</button>
     </nav>
     <div id="sidebar">
 
@@ -74,6 +75,17 @@
       <div id="index-status" class="muted"></div>
     </section>
 
+    <!-- ============ Profiles ============ -->
+    <section class="panel hidden" data-panel="profiles">
+      <h2 data-i18n="prof.h">Profiles (contexts)</h2>
+      <p class="help" data-i18n="prof.help"></p>
+      <div id="prof-list"></div>
+      <div class="row">
+        <input id="prof-new-name" data-i18n-ph="prof.newName" placeholder="Name of the new profile" maxlength="60" />
+        <button id="prof-add" class="primary" data-i18n="prof.add">+ Create profile</button>
+      </div>
+    </section>
+
     <!-- ============ Memory ============ -->
     <section class="panel hidden" data-panel="memory">
       <h2 data-i18n="mem.h">Memory</h2>
@@ -86,9 +98,6 @@
       <ul id="memlist"></ul>
       <button id="mem-clear" data-i18n="mem.clear">Erase all memory</button>
 
-      <h2 data-i18n="mem.profile.h">Fixed profile</h2>
-      <p class="help" data-i18n="mem.profile.help"></p>
-      <textarea data-s="profile" rows="4" data-i18n-ph="mem.profile.ph" placeholder="E.g.: My name is ... I prefer short answers."></textarea>
       <label><span data-i18n="mem.max">Memory limit in the prompt (characters)</span> <input type="number" data-s="memory.maxChars" min="200" max="8000" /></label>
     </section>
 
@@ -155,15 +164,26 @@
    </div>
   </div>
 
+  <aside id="chatbar">
+    <label class="cb-profile"><span data-i18n="ui.profile">Profile</span>
+      <select id="profile-select"></select>
+    </label>
+    <button id="new-chat" class="primary" type="button" data-icon="plus" data-i18n="ui.newChat">New chat</button>
+    <div class="cb-title" data-i18n="ui.chats">Chats</div>
+    <ul id="chat-list"></ul>
+    <button id="chats-clear" class="ghost" type="button" data-icon="trash" data-i18n="ui.deleteAll">Delete all chats</button>
+  </aside>
+
   <main>
     <header id="topbar">
+      <button id="menu-btn" class="icon-btn" type="button" data-icon="menu" data-i18n-title="ui.menu" title="Chats" aria-label="Chats"></button>
       <div class="brand"><img src="../../assets/icon.svg" alt="" width="28" height="28" /><h1>Llamafile Brain</h1></div>
       <div class="pills">
         <span class="pill" id="pill-chat"><i></i><span data-i18n="srv.chat.title">Chat</span></span>
         <span class="pill" id="pill-embed"><i></i><span data-i18n="srv.embed.title">Embeddings</span></span>
       </div>
       <div class="top-actions">
-        <button id="guide-btn" type="button" data-i18n="ui.guide" data-icon="🧭">Guide</button>
+        <button id="guide-btn" type="button" data-i18n="ui.guide" data-icon="guide">Guide</button>
         <span class="lang-wrap"><span id="lang-flag" class="flag" data-flag="en" aria-hidden="true"></span>
         <select id="lang" aria-label="Language" title="Language">
           <option value="en">English</option>
@@ -171,7 +191,7 @@
           <option value="es">Español</option>
         </select></span>
         <button id="theme-btn" class="icon-btn" type="button" aria-label="Theme" title="Light / Dark"></button>
-        <button id="settings-btn" type="button" class="primary" data-i18n="ui.settings" data-icon="⚙️">Settings</button>
+        <button id="settings-btn" type="button" class="primary" data-i18n="ui.settings" data-icon="settings">Settings</button>
       </div>
     </header>
     <div id="messages"><section id="guide"></section></div>
@@ -207,6 +227,10 @@
             <option value="off" data-i18n="srv.gpu.off">CPU only (no GPU)</option>
           </select>
         </label>
+        <label class="ctx-wrap hidden"><span data-i18n="srv.ctx">Conversation memory (context size)</span>
+          <select class="ctx-select"></select>
+        </label>
+        <p class="help ctx-hint hidden"></p>
         <label><span data-i18n="srv.args">Extra arguments</span> <input data-k="args" /></label>
       </div>
       <div class="external hidden">

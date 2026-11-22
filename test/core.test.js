@@ -249,3 +249,31 @@ test('extractText reads .pptx (slides in order + speaker notes) and legacy .ppt'
   assert.ok(text.indexOf('First') < text.indexOf('Second') && text.indexOf('Second') < text.indexOf('Tenth'));
   assert.match(text, /Second\n\nNotes: say hello/);
 });
+
+test('profiles scope chats and memories; deleting a chat or profile removes its data', () => {
+  const db = new BrainDB(':memory:');
+  const work = db.defaultProfileId();
+  const c1 = db.createConversation('First question here');
+  db.addMessage(c1, 'user', 'hi');
+  db.addMessage(c1, 'assistant', 'hello', [{ path: '/a.md', start: 1, end: 2 }]);
+  db.addMemory('works at ACME');
+  assert.strictEqual(db.getMessages(c1).length, 2);
+  assert.strictEqual(db.getMessages(c1)[1].sources[0].path, '/a.md');
+
+  const personal = db.createProfile('Personal', 'Be casual.');
+  db.setProfile(personal);
+  assert.deepStrictEqual(db.listConversations(), [], 'other profile sees no chats');
+  assert.deepStrictEqual(db.getMessages(c1), [], 'and cannot read them');
+  assert.deepStrictEqual(db.listMemories(), []);
+  db.addMemory('likes tea');
+  assert.strictEqual(db.stats().memories, 1);
+
+  db.setProfile(work);
+  assert.deepStrictEqual(db.listMemories().map((m) => m.text), ['works at ACME']);
+  db.deleteConversation(c1);
+  assert.strictEqual(db.listConversations().length, 0);
+
+  assert.throws(() => db.deleteProfile(work) || db.deleteProfile(personal) || db.deleteProfile(work), /./, 'last profile is protected');
+  assert.strictEqual(db.listProfiles().length, 1);
+  db.close();
+});

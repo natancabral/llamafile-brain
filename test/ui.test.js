@@ -46,6 +46,10 @@ function boot(language = 'en') {
     listMemories: async () => [{ id: 1, text: 'meu nome é Natan' }],
     deleteMemory: async () => [], addMemory: async () => [], clearMemories: async () => [],
     ask: (q) => { calls.push(['ask', q]); return new Promise((r) => (resolveAsk = r)); },
+    chatsState: async () => ({ profiles: [{ id: 1, name: 'General', instructions: '' }, { id: 2, name: 'Work', instructions: 'Be formal.' }], activeProfile: 1, conversations: [{ id: 7, title: 'Old chat', updated_at: 1 }] }),
+    getChat: async () => [{ role: 'user', content: 'hi', sources: [] }, { role: 'assistant', content: 'hello **there**', sources: [] }],
+    deleteChat: async () => ({ profiles: [], activeProfile: 1, conversations: [] }),
+    selectProfile: async (id) => { calls.push(['profile', id]); return { profiles: [{ id: 1, name: 'General', instructions: '' }, { id: 2, name: 'Work', instructions: 'Be formal.' }], activeProfile: id, conversations: [] }; },
     cancelChat: async () => {}, revealFile: async () => {},
     ocrStatus: async () => ({ tesseract: true, pdftoppm: false }),
     startServer: (w) => { calls.push(['start', w]); return new Promise((r) => (resolveStart = () => r({ chat: 'running', embed: 'running', rerank: 'stopped' }))); },
@@ -54,7 +58,7 @@ function boot(language = 'en') {
       { id: 'poppler', label: 'dep.poppler', installed: true, command: null },
     ] }),
     installDeps: async (ids) => { calls.push(['install', ids]); return { platform: 'linux', manager: 'apt-get', cancelled: true, results: [], items: [{ id: 'tesseract', label: 'dep.tesseract', installed: false }] }; },
-    ...Object.fromEntries(['onLog', 'onIndexProgress', 'onIndexDone', 'onIndexError', 'onEvalProgress', 'onDelta', 'onSources', 'onWarn', 'onMemoryChanged', 'onServersStatus', 'onDepsProgress'].map((n) => [n, on(n.replace(/^on/, '').replace(/^./, (c) => c.toLowerCase()))])),
+    ...Object.fromEntries(['onLog', 'onIndexProgress', 'onIndexDone', 'onIndexError', 'onEvalProgress', 'onDelta', 'onSources', 'onWarn', 'onMemoryChanged', 'onServersStatus', 'onDepsProgress', 'onStatsChanged'].map((n) => [n, on(n.replace(/^on/, '').replace(/^./, (c) => c.toLowerCase()))])),
   };
   window.confirm = () => true;
   window.eval(fs.readFileSync(path.join(root, '..', 'shared', 'i18n.js'), 'utf8'));
@@ -259,4 +263,26 @@ test('language setting from saved settings is applied at startup', async (t) => 
   await tick();
   assert.strictEqual(window.document.getElementById('lang').value, 'es');
   assert.strictEqual(window.document.querySelector('#tabs button[data-tab="search"]').textContent, 'Búsqueda');
+});
+
+test('saved chats: list on the left, open one, delete, switch profile', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { window, calls } = boot();
+  await tick();
+  const d = window.document;
+  assert.strictEqual(d.querySelectorAll('#chat-list li').length, 1);
+  assert.deepStrictEqual([...d.querySelectorAll('#profile-select option')].map((o) => o.textContent), ['General', 'Work']);
+  d.querySelector('#chat-list li').click();
+  await tick();
+  assert.strictEqual(d.querySelector('.msg.user').textContent, 'hi');
+  assert.strictEqual(d.querySelectorAll('.msg.assistant strong').length, 1);
+  d.querySelector('#chat-list li .x').click();
+  await tick();
+  assert.match(d.querySelector('#chat-list li').textContent, /No chats yet/);
+  assert.strictEqual(d.querySelector('.msg'), null, 'deleting the open chat starts a new one');
+  const sel = d.getElementById('profile-select');
+  sel.value = '2';
+  sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+  await tick();
+  assert.deepStrictEqual(calls.at(-1), ['profile', 2]);
 });

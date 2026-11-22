@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   getState: call('settings:get'),
   saveSettings: call('settings:save'),
   pickFile: call('files:pick'),
+  getMemory: call('sys:memory'),
   // folders
   addFolder: call('folders:add'),
   removeFolder: call('folders:remove'),
@@ -39,7 +40,16 @@ contextBridge.exposeInMainWorld('api', {
   // evaluation
   runEval: call('eval:run'),
   // chat
-  ask: (question, history) => ipcRenderer.invoke('chat:ask', { question, history }),
+  ask: (question, conversationId) => ipcRenderer.invoke('chat:ask', { question, conversationId }),
+  chatsState: call('chats:state'),
+  getChat: call('chats:get'),
+  renameChat: call('chats:rename'),
+  deleteChat: call('chats:delete'),
+  deleteAllChats: call('chats:deleteAll'),
+  selectProfile: call('profiles:select'),
+  createProfile: call('profiles:create'),
+  updateProfile: call('profiles:update'),
+  deleteProfile: call('profiles:delete'),
   cancelChat: call('chat:cancel'),
   revealFile: call('open:path'),
   // events
@@ -54,4 +64,5 @@ contextBridge.exposeInMainWorld('api', {
   onWarn: on('chat-warn'),
   onMemoryChanged: on('memory-changed'),
   onServersStatus: on('servers-status'),
+  onStatsChanged: on('stats-changed'),
 });

@@ -42,13 +42,7 @@ Serve para estudar, pesquisar, documentar projetos, organizar contratos e anota�
 
 ## Capturas de tela
 
-| Conversa com fontes | Conhecimento |
-|---|---|
-| ![Chat](docs/images/chat.png) | ![Conhecimento](docs/images/knowledge.png) |
-| **Memória** | **Instalação** |
-| ![Memória](docs/images/memory.png) | ![Instalação](docs/images/setup.png) |
-
-<sub>Capturas geradas pelo teste ponta a ponta, com servidores de modelo simulados.</sub>
+![Conversa com fontes](docs/images/chat.png)
 
 ## Como funciona
 

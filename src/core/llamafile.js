@@ -1,7 +1,8 @@
 'use strict';
 
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const path = require('node:path');
 const net = require('node:net');
 const { waitHealthy } = require('./client');
 const { t: tr } = require('../shared/i18n');
@@ -48,6 +49,50 @@ function killTree(proc) {
       /* already gone */
     }
   }
+}
+
+// ---- spawned-server registry: lets the next launch clean up servers left behind by a crash or `kill -9`
+let stateFile = null;
+const live = new Map(); // server name -> { pid, file }
+const saveLive = () => {
+  if (!stateFile) return;
+  try {
+    fs.writeFileSync(stateFile, JSON.stringify([...live.values()]));
+  } catch {
+    /* not critical */
+  }
+};
+/** Where to keep the registry (the app's data folder). */
+function setStateDir(dir) {
+  stateFile = path.join(dir, 'servers.json');
+}
+/** Kills llamafile servers recorded by a previous run that are still alive (matched by process group + file name, so a reused pid is never touched). */
+function reapOrphans() {
+  if (!stateFile || process.platform === 'win32') return 0;
+  let list = [];
+  try {
+    list = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+  } catch {
+    return 0;
+  }
+  let n = 0;
+  for (const { pid, file } of list) {
+    if (!pid || !file) continue;
+    const r = spawnSync('pgrep', ['-g', String(pid), '-f', file], { stdio: 'ignore' });
+    if (r.status !== 0) continue;
+    try {
+      process.kill(-pid, 'SIGTERM');
+      n++;
+    } catch {
+      /* already gone */
+    }
+  }
+  try {
+    fs.unlinkSync(stateFile);
+  } catch {
+    /* ignore */
+  }
+  return n;
 }
 
 /**
@@ -102,6 +147,7 @@ class LlamafileServer {
         /* ignore */
       }
     }
+    if (isWin && !/\.exe$/i.test(file)) throw new Error(tr('srv.needExe', { file }));
     const cmd = isWin ? file : '/bin/sh';
     const cmdArgs = isWin ? full : [file, ...full];
 
@@ -109,6 +155,8 @@ class LlamafileServer {
     this.onLog(this.name, `$ ${cmd} ${cmdArgs.join(' ')}`);
     const proc = spawn(cmd, cmdArgs, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: !isWin });
     this.proc = proc;
+    live.set(this.name, { pid: proc.pid, file });
+    saveLive();
 
     const tail = [];
     const log = (d) => {
@@ -132,6 +180,8 @@ class LlamafileServer {
         const wasStarting = this.status === 'starting';
         if (this.status !== 'stopped') this.status = code === 0 ? 'stopped' : 'error';
         if (this.proc === proc) this.proc = null;
+        live.delete(this.name);
+        saveLive();
         if (wasStarting) {
           reject(new Error(tr('srv.closed', { name: this.name, code, tail: tail.slice(-8).join('\n') })));
         }
@@ -160,7 +210,9 @@ class LlamafileServer {
       killTree(this.proc);
       this.proc = null;
     }
+    live.delete(this.name);
+    saveLive();
   }
 }
 
-module.exports = { LlamafileServer, splitArgs, portFree, gpuFlags };
+module.exports = { LlamafileServer, splitArgs, portFree, gpuFlags, setStateDir, reapOrphans };

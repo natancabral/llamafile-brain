@@ -1,10 +1,15 @@
 'use strict';
 
+// node:sqlite prints an "ExperimentalWarning" on every start; it is stable enough for this app, so keep the console clean.
+const emitWarning = process.emitWarning;
+process.emitWarning = (w, ...a) => (/SQLite/i.test(String(w?.message || w)) ? undefined : emitWarning.call(process, w, ...a));
+
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const { LlamafileServer, portFree } = require('./core/llamafile');
+const os = require('node:os');
+const { LlamafileServer, portFree, setStateDir, reapOrphans } = require('./core/llamafile');
 const { checkExternal } = require('./core/client');
 const { BrainDB } = require('./core/db');
 const { indexFolders, makeIgnore, SKIP_DIRS } = require('./core/indexer');
@@ -42,7 +47,8 @@ const DEFAULTS = {
   summaryMaxFiles: 40,
   hybrid: { vectorWeight: 0.6 },
   memory: { enabled: true, maxChars: 1500 },
-  profile: '',
+  profile: '', // legacy (moved into the default profile)
+  activeProfile: 0, // id of the selected profile (context)
   evalSet: '',
 };
 
@@ -154,6 +160,16 @@ function openDb() {
     log('db', `Erro ao abrir o banco: ${e.message}`);
   }
   lastMemKey = null;
+  if (db) {
+    // one-time move of the old global "fixed profile" text into the default profile
+    if (settings.profile) {
+      const d = db.getProfile(db.defaultProfileId());
+      if (!d.instructions) db.updateProfile(d.id, { instructions: settings.profile });
+      settings.profile = '';
+      saveSettings();
+    }
+    settings.activeProfile = db.setProfile(settings.activeProfile);
+  }
 }
 function getDb() {
   if (!db) throw new Error(dbError || t('main.noDb'));
@@ -182,6 +198,8 @@ function purgeOutsideRoots() {
 /** Writes <brainDir>/memory.md when the memory changed. Returns true if the memory changed. */
 function exportMemory() {
   if (!db) return false;
+  // memory.md is exported only for the first (default) profile, so other profiles' memories never leak into shared notes
+  if (db.profileId !== db.defaultProfileId()) return false;
   const list = db.listMemories();
   const key = JSON.stringify(list.map((m) => [m.id, m.text]));
   if (key === lastMemKey) return false;
@@ -320,6 +338,16 @@ function registerIpc() {
   });
 
   ipcMain.handle('settings:get', () => state());
+  // RAM numbers for the "memory / context size" advice (works the same on Linux, macOS and Windows)
+  ipcMain.handle('sys:memory', (_e, file) => {
+    let model = 0;
+    try {
+      if (file) model = fs.statSync(file).size;
+    } catch {
+      /* no file yet */
+    }
+    return { total: os.totalmem(), free: os.freemem(), model };
+  });
   ipcMain.handle('settings:save', (_e, patch) => {
     applySettingsPatch(patch);
     return settings;
@@ -443,7 +471,7 @@ function registerIpc() {
 
   // ---- indexing
   ipcMain.handle('index:run', async () => {
-    if (indexRunning) throw new Error(t('idx.running'));
+    if (indexRunning) return fullStats(); // already running (e.g. auto-index): just keep showing its progress
     return runIndex({ auto: false });
   });
   ipcMain.handle('index:cancel', () => indexAbort?.abort());
@@ -569,7 +597,7 @@ function registerIpc() {
   });
 
   // ---- chat
-  ipcMain.handle('chat:ask', async (_e, { question, history }) => {
+  ipcMain.handle('chat:ask', async (_e, { question, conversationId }) => {
     if (typeof question !== 'string' || !question.trim()) throw new Error('Pergunta vazia');
     const qTokens = estimateTokens(question);
     if (qTokens > settings.maxInputTokens) {
@@ -578,17 +606,20 @@ function registerIpc() {
     const database = getDb();
     chatAbort?.abort();
     chatAbort = new AbortController();
-    const hist = Array.isArray(history)
-      ? history
-          .filter((m) => m && ['user', 'assistant'].includes(m.role) && typeof m.content === 'string')
-          .map((m) => ({ role: m.role, content: m.content }))
-      : [];
+    // The conversation lives in SQLite: history is read from there, not trusted from the UI.
+    let convId = Number(conversationId) || 0;
+    if (!convId || !database.listConversations().some((c) => c.id === convId)) {
+      convId = database.createConversation(question.trim().replace(/\s+/g, ' '));
+    }
+    const hist = database.getMessages(convId).map((m) => ({ role: m.role, content: m.content }));
+    database.addMessage(convId, 'user', question);
+    const prof = database.getProfile(database.profileId);
     try {
       const r = await ask({
         question,
         history: hist,
         db: database,
-        settings,
+        settings: { ...settings, profile: prof?.instructions || '' },
         signal: chatAbort.signal,
         onSources: (s) => send('chat-sources', s),
         onDelta: (t) => send('chat-delta', t),
@@ -597,11 +628,67 @@ function registerIpc() {
           send('chat-warn', w);
         },
       });
+      database.addMessage(convId, 'assistant', r.answer || '', r.sources || []);
       if (exportMemory()) send('memory-changed', database.listMemories());
-      return r;
+      return { ...r, conversationId: convId, conversations: database.listConversations() };
+    } catch (e) {
+      if (e?.name === 'AbortError' || /abort/i.test(String(e?.message))) {
+        // user pressed Stop: not an error (and not logged as one by Electron)
+        return { answer: '', sources: [], aborted: true, conversationId: convId, conversations: database.listConversations() };
+      }
+      throw e;
     } finally {
       chatAbort = null;
     }
+  });
+
+  // ---- saved chats + profiles (contexts)
+  const chatsState = () => ({
+    profiles: db ? db.listProfiles() : [],
+    activeProfile: settings.activeProfile,
+    conversations: db ? db.listConversations() : [],
+  });
+  ipcMain.handle('chats:state', () => chatsState());
+  ipcMain.handle('chats:get', (_e, id) => getDb().getMessages(Number(id)));
+  ipcMain.handle('chats:rename', (_e, id, title) => {
+    getDb().renameConversation(Number(id), title);
+    return chatsState();
+  });
+  ipcMain.handle('chats:delete', (_e, id) => {
+    getDb().deleteConversation(Number(id));
+    return chatsState();
+  });
+  ipcMain.handle('chats:deleteAll', () => {
+    getDb().deleteAllConversations();
+    return chatsState();
+  });
+  const afterProfileChange = () => {
+    lastMemKey = null;
+    exportMemory();
+    send('memory-changed', db.listMemories());
+    send('stats-changed', fullStats());
+    return chatsState();
+  };
+  ipcMain.handle('profiles:select', (_e, id) => {
+    settings.activeProfile = getDb().setProfile(Number(id));
+    saveSettings();
+    return afterProfileChange();
+  });
+  ipcMain.handle('profiles:create', (_e, name, instructions) => {
+    const id = getDb().createProfile(name, instructions);
+    settings.activeProfile = db.setProfile(id);
+    saveSettings();
+    return afterProfileChange();
+  });
+  ipcMain.handle('profiles:update', (_e, id, patch) => {
+    getDb().updateProfile(Number(id), patch || {});
+    return chatsState();
+  });
+  ipcMain.handle('profiles:delete', (_e, id) => {
+    getDb().deleteProfile(Number(id));
+    settings.activeProfile = db.profileId;
+    saveSettings();
+    return afterProfileChange();
   });
   ipcMain.handle('chat:cancel', () => chatAbort?.abort());
 
@@ -612,8 +699,12 @@ function registerIpc() {
   });
 }
 
+if (process.platform === 'linux') app.commandLine.appendSwitch('log-level', '3'); // hides harmless GPU/VSync console noise
+
 app.whenReady().then(() => {
   userDir = app.getPath('userData');
+  setStateDir(userDir);
+  reapOrphans(); // servers left running by a crashed/killed previous session
   settings = loadSettings();
   I18N.setLang(settings.language);
   openDb();
@@ -636,6 +727,9 @@ app.on('before-quit', () => {
   }
   if (db) db.close();
 });
+// Ctrl+C in the terminal / system shutdown: quit normally so 'before-quit' stops the servers this app started
+// (Ollama and other external servers are never touched).
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => app.quit());
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });

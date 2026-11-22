@@ -44,7 +44,6 @@ function applyI18n(root = document) {
   document.documentElement.lang = I18N.getLang();
 }
 
-const history = [];
 let busy = false;
 let state = null;
 
@@ -66,6 +65,7 @@ const modal = $('modal');
 function openSettings(tab) {
   if (tab) selectTab(tab);
   modal.classList.remove('hidden');
+  refreshCtx().catch(() => {});
   $('modal-close').focus();
 }
 function closeSettings() {
@@ -84,7 +84,7 @@ function applyTheme(t) {
 function initTheme() {
   let t = null;
   try { t = localStorage.getItem('lfb-theme'); } catch {}
-  if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  if (t !== 'light' && t !== 'dark') t = window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   applyTheme(t);
 }
 $('theme-btn').onclick = () => {
@@ -98,6 +98,10 @@ initTheme();
 function renderGuide() {
   const g = $('guide');
   if (!state) return;
+  if (chatActive && !guideForced) {
+    g.classList.add('hidden');
+    return;
+  }
   const sv = state.servers || {};
   const st = state.settings || {};
   const chatCfg = st.chat || {};
@@ -131,6 +135,7 @@ function renderGuide() {
   });
 }
 let guideForced = false;
+let chatActive = false; // a conversation is on screen: hide the setup guide
 $('guide-btn').onclick = () => {
   guideForced = true;
   renderGuide();
@@ -179,6 +184,48 @@ function updateVWeight() {
   $('vweight-val').textContent = tr('se.vweight', { v: Math.round(v * 100), k: Math.round((1 - v) * 100) });
 }
 $('vweight').addEventListener('input', updateVWeight);
+
+// ---------------------------------------------------------------- context size (-c), with RAM advice
+const CTX_RE = /(^|\s)(?:-c|--ctx-size)(?:\s+|=)(\d+)/;
+const CTX_PRESETS = [2048, 4096, 8192, 16384, 32768, 65536];
+const gb = (b) => (b / 1073741824).toFixed(1);
+async function refreshCtx() {
+  const block = document.querySelector('.srv[data-which="chat"]');
+  if (!block || !window.api.getMemory) return;
+  const argsInput = block.querySelector('[data-k="args"]');
+  const sel = block.querySelector('.ctx-select');
+  const m = await window.api.getMemory(block.querySelector('[data-k="file"]').value);
+  const running = state?.servers?.chat === 'running'; // a running model is already counted in "used" memory
+  const modelGB = m.model / 1073741824;
+  const perTokenMB = Math.max(0.05, modelGB * 0.08); // rough KV-cache cost per token
+  const budgetMB = m.free / 1048576 - (running ? 0 : modelGB * 1024 * 1.1) - 1024;
+  const fits = (n) => n * perTokenMB <= budgetMB;
+  const rec = [...CTX_PRESETS].reverse().find((n) => n <= 32768 && fits(n)) || CTX_PRESETS[0];
+  const cur = Number((CTX_RE.exec(argsInput.value) || [])[2]) || 0;
+  const list = [...new Set([...CTX_PRESETS, ...(cur ? [cur] : [])])].sort((a, b) => a - b);
+  sel.replaceChildren();
+  sel.append(new Option('—', ''));
+  for (const n of list) {
+    const label = CTX_PRESETS.includes(n) ? tr('srv.ctx.opt', { n, w: Math.round(n * 0.75).toLocaleString() }) : tr('srv.ctx.custom', { n });
+    sel.append(new Option(`${n === rec ? '★ ' : ''}${label}${fits(n) ? '' : ` ⚠ ${tr('srv.ctx.heavy')}`}`, String(n)));
+  }
+  sel.value = cur ? String(cur) : '';
+  const hint = block.querySelector('.ctx-hint');
+  richText(hint, tr('srv.ctx.hint', { total: gb(m.total), free: gb(m.free), model: gb(m.model), rec }));
+  block.querySelector('.ctx-wrap').classList.remove('hidden');
+  hint.classList.remove('hidden');
+  if (!sel.dataset.bound) {
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', () => {
+      if (!sel.value) return;
+      const v = argsInput.value;
+      argsInput.value = CTX_RE.test(v) ? v.replace(CTX_RE, `$1-c ${sel.value}`) : `${v} -c ${sel.value}`.trim();
+      argsInput.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    argsInput.addEventListener('change', () => refreshCtx());
+    block.querySelector('[data-k="file"]').addEventListener('change', () => refreshCtx());
+  }
+}
 
 // ---------------------------------------------------------------- servers
 function toggleMode(block) {
@@ -585,6 +632,7 @@ $('form').onsubmit = async (e) => {
   $('input').value = '';
   updateTokenCount();
   guideForced = false;
+  chatActive = true;
   $('guide').classList.add('hidden');
   const u = el('div', 'msg user');
   u.textContent = q; // user text stays plain text
@@ -593,12 +641,19 @@ $('form').onsubmit = async (e) => {
   armIdle();
   setBusy(true);
   try {
-    const { answer, sources } = await window.api.ask(q, history);
+    const r = await window.api.ask(q, convId);
+    convId = r.conversationId;
+    chats.conversations = r.conversations || chats.conversations;
+    renderChatList();
     clearTimeout(cur.idle);
     cur.th.remove();
-    renderMarkdown(cur.body, answer || tr('chat.noAnswer'));
-    addSources(cur.d, sources || []);
-    history.push({ role: 'user', content: q }, { role: 'assistant', content: answer });
+    if (r.aborted) {
+      if (cur.raw) renderMarkdown(cur.body, cur.raw);
+      cur.d.append(el('div', 'muted', tr('chat.interrupted')));
+    } else {
+      renderMarkdown(cur.body, r.answer || tr('chat.noAnswer'));
+      addSources(cur.d, r.sources || []);
+    }
   } catch (err) {
     clearTimeout(cur.idle);
     cur.th.remove();
@@ -624,6 +679,153 @@ $('input').addEventListener('keydown', (e) => {
   }
 });
 
+// ---------------------------------------------------------------- saved chats + profiles
+let convId = null; // open conversation (null = a new chat, created on the first question)
+let chats = { profiles: [], activeProfile: 0, conversations: [] };
+
+function showEmptyChat() {
+  messages.replaceChildren($('guide'));
+  chatActive = false;
+  renderGuide();
+}
+function newChat() {
+  if (busy) window.api.cancelChat();
+  convId = null;
+  guideForced = false;
+  showEmptyChat();
+  renderChatList();
+  $('input').focus();
+}
+async function openChat(id) {
+  if (busy) window.api.cancelChat();
+  const msgs = await window.api.getChat(id);
+  convId = id;
+  chatActive = true;
+  messages.replaceChildren($('guide'));
+  $('guide').classList.add('hidden');
+  for (const m of msgs) {
+    if (m.role === 'user') {
+      messages.append(el('div', 'msg user', m.content));
+    } else {
+      const d = el('div', 'msg assistant');
+      const body = el('div', 'body');
+      d.append(body);
+      renderMarkdown(body, m.content);
+      addSources(d, m.sources || []);
+      messages.append(d);
+    }
+  }
+  renderChatList();
+  messages.scrollTop = messages.scrollHeight;
+}
+function renderChatList() {
+  const ul = $('chat-list');
+  ul.textContent = '';
+  if (!chats.conversations.length) {
+    ul.append(el('li', 'empty', tr('ui.noChats')));
+    return;
+  }
+  for (const c of chats.conversations) {
+    const li = el('li', c.id === convId ? 'active' : '');
+    li.title = c.title;
+    li.append(el('span', 't', c.title));
+    const x = el('button', 'x', '×');
+    x.title = tr('ui.deleteChat');
+    x.setAttribute('aria-label', tr('ui.deleteChat'));
+    x.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(tr('ui.confirmDelete'))) return;
+      chats = await window.api.deleteChat(c.id);
+      if (c.id === convId) newChat();
+      else renderChatList();
+    };
+    li.onclick = () => c.id !== convId && openChat(c.id);
+    li.append(x);
+    ul.append(li);
+  }
+}
+function renderProfileSelect() {
+  const sel = $('profile-select');
+  sel.replaceChildren(...chats.profiles.map((p) => new Option(p.name, String(p.id))));
+  sel.value = String(chats.activeProfile);
+}
+function renderProfilesPanel() {
+  const box = $('prof-list');
+  box.replaceChildren();
+  for (const p of chats.profiles) {
+    const active = p.id === chats.activeProfile;
+    const card = el('div', `prof${active ? ' current' : ''}`);
+    const nameLbl = el('label', null, tr('prof.name'));
+    const name = el('input');
+    name.value = p.name;
+    name.maxLength = 60;
+    nameLbl.append(name);
+    const insLbl = el('label', null, tr('prof.instr'));
+    const ins = el('textarea');
+    ins.rows = 3;
+    ins.value = p.instructions || '';
+    ins.placeholder = tr('prof.instr.ph');
+    insLbl.append(ins);
+    const row = el('div', 'row');
+    const save = el('button', 'primary', tr('prof.save'));
+    save.onclick = async () => {
+      chats = await window.api.updateProfile(p.id, { name: name.value, instructions: ins.value });
+      renderProfileSelect();
+      renderProfilesPanel();
+    };
+    row.append(save);
+    if (!active) {
+      const use = el('button', null, tr('prof.use'));
+      use.onclick = () => switchProfile(p.id);
+      row.append(use);
+    } else row.append(el('span', 'badge ok', tr('prof.active')));
+    row.append(el('span', 'grow'));
+    if (chats.profiles.length > 1) {
+      const del = el('button', 'ghost', tr('prof.delete'));
+      del.onclick = async () => {
+        if (!confirm(tr('prof.confirmDelete', { n: p.name }))) return;
+        const wasActive = p.id === chats.activeProfile;
+        chats = await window.api.deleteProfile(p.id);
+        renderProfileSelect();
+        renderProfilesPanel();
+        if (wasActive) newChat();
+      };
+      row.append(del);
+    }
+    card.append(nameLbl, insLbl, row);
+    box.append(card);
+  }
+}
+function renderChatbar() {
+  renderProfileSelect();
+  renderChatList();
+  renderProfilesPanel();
+}
+async function switchProfile(id) {
+  chats = await window.api.selectProfile(id);
+  renderChatbar();
+  newChat();
+  refreshMemories();
+}
+$('profile-select').addEventListener('change', () => switchProfile(Number($('profile-select').value)));
+$('new-chat').onclick = newChat;
+$('menu-btn').onclick = () => $('chatbar').classList.toggle('collapsed');
+$('chats-clear').onclick = async () => {
+  if (!chats.conversations.length || !confirm(tr('ui.confirmDeleteAll'))) return;
+  chats = await window.api.deleteAllChats();
+  newChat();
+};
+$('prof-add').onclick = async () => {
+  const n = $('prof-new-name').value.trim();
+  if (!n) return $('prof-new-name').focus();
+  chats = await window.api.createProfile(n, '');
+  $('prof-new-name').value = '';
+  renderChatbar();
+  newChat();
+  refreshMemories();
+};
+window.api.onStatsChanged(showStats);
+
 // ---------------------------------------------------------------- init
 async function init() {
   state = await window.api.getState();
@@ -632,16 +834,20 @@ async function init() {
   applyI18n();
   buildServers();
   fillInputs(state.settings);
+  refreshCtx().catch(() => {});
   $('brain-path').value = state.settings.brainDir || '';
   $('eval-set').value = state.settings.evalSet || '';
   renderFolders(state.settings.folders);
   setStatus(state.servers);
   showStats(state.stats);
   refreshMemories();
+  chats = await window.api.chatsState();
+  renderChatbar();
 }
 // Language selector: saves the setting (main process switches its own language too) and re-renders everything.
 function relocalize() {
   applyI18n();
+  refreshCtx().catch(() => {});
   applyTheme(document.documentElement.dataset.theme);
   setStatus(state.servers);
   if (lastStats) showStats(lastStats);
@@ -649,6 +855,7 @@ function relocalize() {
   updateTokenCount();
   refreshMemories();
   refreshDeps();
+  renderChatbar();
 }
 $('lang').addEventListener('change', async () => {
   const lang = I18N.setLang($('lang').value);
