@@ -55,7 +55,7 @@ if (onNosuid) {
 }
 
 if (process.argv.includes('--start')) {
-  const args = onNosuid ? ['start', '--no-sandbox'] : ['start'];
-  const r = spawnSync(pm.bin, args, { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
+  // same launcher as `npm run start` (it adds --no-sandbox only when no sandbox can work)
+  const r = spawnSync(process.execPath, [path.join(__dirname, 'start.js')], { cwd: root, stdio: 'inherit' });
   process.exit(r.status || 0);
 }

@@ -205,27 +205,52 @@ $('vweight').addEventListener('input', updateVWeight);
 
 // ---------------------------------------------------------------- context size (-c), with RAM advice
 const CTX_RE = /(^|\s)(?:-c|--ctx-size)(?:\s+|=)(\d+)/;
-const CTX = { def: 4096, min: 512, max: 131072 };
+const CTX_PRESETS = [1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072];
+const CTX_DEFAULT = 4096;
 const gb = (b) => (b / 1073741824).toFixed(1);
-const clampCtx = (n) => Math.min(CTX.max, Math.max(CTX.min, Math.round(Number(n) / 64) * 64 || CTX.def));
 let ctxMem = null; // last RAM reading { total, free, model } (same numbers on Linux, macOS and Windows)
 
-function paintCtxHint(block) {
-  const input = block.querySelector('.ctx-input');
-  const hint = block.querySelector('.ctx-hint');
-  const m = ctxMem;
+/** What this PC can afford: rough KV-cache cost per token against the RAM that is really available. */
+function ctxBudget(m) {
   const running = state?.servers?.chat === 'running'; // a running model is already counted as "used" memory
   const modelGB = m.model / 1073741824;
-  const perTokenMB = Math.max(0.05, modelGB * 0.08); // rough KV-cache cost per token
+  const perTokenMB = Math.max(0.05, modelGB * 0.08);
   const budgetMB = m.free / 1048576 - (running ? 0 : modelGB * 1024 * 1.1) - 1024;
-  const rec = Math.max(CTX.min, Math.min(32768, Math.floor(budgetMB / perTokenMB / 1024) * 1024)) || CTX.def;
-  const n = Number(input.value) || CTX.def;
-  let text = tr('srv.ctx.hint', { total: gb(m.total), free: gb(m.free), model: gb(m.model), rec, def: CTX.def, min: CTX.min, max: CTX.max.toLocaleString() });
-  if (n * perTokenMB > budgetMB) {
+  const fits = (n) => n * perTokenMB <= budgetMB;
+  const rec = [...CTX_PRESETS].reverse().find((n) => n <= 32768 && fits(n)) || CTX_PRESETS[0];
+  return { perTokenMB, budgetMB, fits, rec };
+}
+const ctxFromArgs = (block) => Number((CTX_RE.exec(block.querySelector('[data-k="args"]').value) || [])[2]) || 0;
+/** Number the select stands for: the chosen size, or (Automatic) the best one for this PC. */
+function ctxChosen(block) {
+  const v = block.querySelector('.ctx-select').value;
+  return v === 'auto' ? (ctxMem ? ctxBudget(ctxMem).rec : CTX_DEFAULT) : Number(v) || CTX_DEFAULT;
+}
+
+function paintCtxHint(block) {
+  const hint = block.querySelector('.ctx-hint');
+  const m = ctxMem;
+  if (!m) return;
+  const { perTokenMB, budgetMB, fits, rec } = ctxBudget(m);
+  const n = ctxChosen(block);
+  let text = tr('srv.ctx.hint', { total: gb(m.total), free: gb(m.free), model: gb(m.model), rec });
+  if (!fits(n)) {
     text += ` ${tr('srv.ctx.warn', { n: n.toLocaleString(), need: ((n * perTokenMB) / 1024).toFixed(1), avail: (Math.max(0, budgetMB) / 1024).toFixed(1) })}`;
   }
   richText(hint, text);
-  hint.classList.toggle('over', n * perTokenMB > budgetMB);
+  hint.classList.toggle('over', !fits(n));
+}
+function fillCtxSelect(block, keep) {
+  const sel = block.querySelector('.ctx-select');
+  const { fits, rec } = ctxBudget(ctxMem);
+  const cur = keep ?? (ctxFromArgs(block) ? String(ctxFromArgs(block)) : 'auto');
+  const list = [...new Set([...CTX_PRESETS, ...(/^\d+$/.test(cur) ? [Number(cur)] : [])])].sort((a, b) => a - b);
+  sel.replaceChildren(new Option(tr('srv.ctx.auto', { n: rec.toLocaleString() }), 'auto'));
+  for (const n of list) {
+    const label = CTX_PRESETS.includes(n) ? tr('srv.ctx.opt', { n: n.toLocaleString(), w: Math.round(n * 0.75).toLocaleString() }) : tr('srv.ctx.custom', { n: n.toLocaleString() });
+    sel.append(new Option(`${n === rec ? '★ ' : ''}${label}${fits(n) ? '' : ` ⚠ ${tr('srv.ctx.heavy')}`}`, String(n)));
+  }
+  sel.value = cur;
 }
 function writeCtxToArgs(block, value) {
   const argsInput = block.querySelector('[data-k="args"]');
@@ -236,34 +261,31 @@ function writeCtxToArgs(block, value) {
     argsInput.dispatchEvent(new Event('change', { bubbles: true }));
   }
 }
-/** Before the model starts: the value in the box (default 4096) always goes to the server as -c. */
-function ensureCtx(block) {
-  const input = block.querySelector('.ctx-input');
-  if (!input || block.querySelector('[data-k="mode"]').value !== 'spawn') return;
-  const n = clampCtx(input.value);
-  input.value = n;
+/** Before the model starts: re-reads the RAM, resolves "Automatic" to the best size for this PC and sends it as -c. */
+async function ensureCtx(block) {
+  const sel = block.querySelector('.ctx-select');
+  if (!sel || !window.api.getMemory || block.querySelector('[data-k="mode"]').value !== 'spawn') return;
+  const wasAuto = sel.value === 'auto';
+  ctxMem = await window.api.getMemory(block.querySelector('[data-k="file"]').value);
+  const n = wasAuto ? ctxBudget(ctxMem).rec : Number(sel.value) || CTX_DEFAULT;
   writeCtxToArgs(block, n);
 }
 async function refreshCtx() {
   const block = document.querySelector('.srv[data-which="chat"]');
   if (!block || !window.api.getMemory) return;
-  const argsInput = block.querySelector('[data-k="args"]');
-  const input = block.querySelector('.ctx-input');
+  const sel = block.querySelector('.ctx-select');
   ctxMem = await window.api.getMemory(block.querySelector('[data-k="file"]').value);
-  const fromArgs = Number((CTX_RE.exec(argsInput.value) || [])[2]) || 0;
-  if (document.activeElement !== input) input.value = fromArgs || CTX.def;
+  fillCtxSelect(block, ctxFromArgs(block) ? String(ctxFromArgs(block)) : sel.value || 'auto');
   block.querySelector('.ctx-wrap').classList.remove('hidden');
   block.querySelector('.ctx-hint').classList.remove('hidden');
   paintCtxHint(block);
-  if (!input.dataset.bound) {
-    input.dataset.bound = '1';
-    input.addEventListener('input', () => ctxMem && paintCtxHint(block));
-    input.addEventListener('change', () => {
-      input.value = clampCtx(input.value);
-      writeCtxToArgs(block, input.value);
+  if (!sel.dataset.bound) {
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', () => {
+      if (sel.value !== 'auto') writeCtxToArgs(block, sel.value);
       paintCtxHint(block);
     });
-    argsInput.addEventListener('change', () => refreshCtx());
+    block.querySelector('[data-k="args"]').addEventListener('change', () => refreshCtx());
     block.querySelector('[data-k="file"]').addEventListener('change', () => refreshCtx());
   }
 }
@@ -299,7 +321,7 @@ function buildServers() {
       if (block.querySelector('.start').disabled) return;
       setStatus({ ...state.servers, [def.key]: 'starting' }); // feedback imediato: um clique basta
       try {
-        if (def.key === 'chat') ensureCtx(block);
+        if (def.key === 'chat') await ensureCtx(block);
         await saveAll();
         setStatus(await window.api.startServer(def.key));
       } catch (e) {

@@ -277,3 +277,14 @@ test('profiles scope chats and memories; deleting a chat or profile removes its 
   assert.strictEqual(db.listProfiles().length, 1);
   db.close();
 });
+
+test('system prompt carries the computer clock, so "what day is it?" can be answered', () => {
+  const { dateTimeLine, systemContextBlock } = require('../src/core/sysinfo');
+  const line = dateTimeLine(new Date(2026, 10, 23, 9, 5)); // local time: Mon 23 Nov 2026 09:05
+  assert.match(line, /Monday, 2026-11-23 09:05 \(.+, UTC[+-]\d\d:\d\d\)/);
+  const block = systemContextBlock();
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  assert.ok(block.includes(`Current date and time on the user's computer`) && block.includes(today), 'today is in the prompt');
+  assert.match(block, /never say you have no access to the machine or to the calendar/);
+});

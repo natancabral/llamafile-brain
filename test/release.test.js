@@ -7,6 +7,8 @@ const path = require('node:path');
 const pkg = require('../package.json');
 const { parseArgs, checkPrereqs, builderArgs, currentTarget } = require('../scripts/release');
 
+const { needsNoSandbox, suidSandboxOk, userNamespacesOk } = require('../scripts/start');
+
 const root = path.join(__dirname, '..');
 
 test('build config: Ubuntu/Debian (deb), Fedora/openSUSE (rpm), Windows 64+32, macOS Intel+Apple Silicon', () => {
@@ -50,4 +52,23 @@ test('release.js: arguments, per-system prerequisites and electron-builder comma
   assert.deepStrictEqual(builderArgs('win'), ['--win', '--x64', '--ia32', '--publish', 'never']);
   assert.deepStrictEqual(builderArgs('mac'), ['--mac', '--x64', '--arm64', '--publish', 'never']);
   assert.deepStrictEqual(builderArgs('linux', { dir: true }), ['--linux', '--x64', '--dir', '--publish', 'never']);
+});
+
+test('start.js: --no-sandbox only on Linux and only when neither sandbox can work', () => {
+  assert.strictEqual(needsNoSandbox({ platform: 'win32' }), false);
+  assert.strictEqual(needsNoSandbox({ platform: 'darwin' }), false);
+  assert.strictEqual(needsNoSandbox({ platform: 'linux', suid: true }), false, 'setuid helper works');
+  assert.strictEqual(needsNoSandbox({ platform: 'linux', suid: false, userns: true }), false, 'user namespaces work');
+  assert.strictEqual(needsNoSandbox({ platform: 'linux', suid: false, userns: false }), true);
+  assert.strictEqual(needsNoSandbox({ platform: 'linux', suid: false, userns: false, args: ['--no-sandbox'] }), false, 'already requested');
+  // helper checks
+  assert.strictEqual(suidSandboxOk('/x', { stat: () => ({ uid: 0, mode: 0o104755 }), mountOptions: () => 'rw,relatime' }), true);
+  assert.strictEqual(suidSandboxOk('/x', { stat: () => ({ uid: 0, mode: 0o104755 }), mountOptions: () => 'rw,nosuid' }), false, 'nosuid mount');
+  assert.strictEqual(suidSandboxOk('/x', { stat: () => ({ uid: 1000, mode: 0o100755 }), mountOptions: () => '' }), false, 'not root / no setuid bit');
+  // Ubuntu 24.04+: unshare is allowed by AppArmor, everything else is not
+  const sys = (map) => (f) => { if (f in map) return String(map[f]); throw new Error('ENOENT'); };
+  assert.strictEqual(userNamespacesOk({ read: sys({ '/proc/sys/kernel/apparmor_restrict_unprivileged_userns': 1 }), probe: () => true }), false);
+  assert.strictEqual(userNamespacesOk({ read: sys({ '/proc/sys/user/max_user_namespaces': 0 }), probe: () => true }), false);
+  assert.strictEqual(userNamespacesOk({ read: sys({ '/proc/sys/kernel/apparmor_restrict_unprivileged_userns': 0 }), probe: () => true }), true);
+  assert.strictEqual(userNamespacesOk({ read: sys({}), probe: () => false }), false);
 });

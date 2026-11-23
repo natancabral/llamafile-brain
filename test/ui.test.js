@@ -50,6 +50,7 @@ function boot(language = 'en') {
     getChat: async () => [{ role: 'user', content: 'hi', sources: [] }, { role: 'assistant', content: 'hello **there**', sources: [] }],
     deleteChat: async () => ({ profiles: [], activeProfile: 1, conversations: [] }),
     selectProfile: async (id) => { calls.push(['profile', id]); return { profiles: [{ id: 1, name: 'General', instructions: '' }, { id: 2, name: 'Work', instructions: 'Be formal.' }], activeProfile: id, conversations: [] }; },
+    getMemory: async () => ({ total: 16 * 2 ** 30, free: 8 * 2 ** 30, model: 2 * 2 ** 30 }),
     cancelChat: async () => {}, revealFile: async () => {},
     ocrStatus: async () => ({ tesseract: true, pdftoppm: false }),
     startServer: (w) => { calls.push(['start', w]); return new Promise((r) => (resolveStart = () => r({ chat: 'running', embed: 'running', rerank: 'stopped' }))); },
@@ -336,4 +337,30 @@ test('a new chat appears in the left list as soon as the question is sent', asyn
   assert.strictEqual(items.length, 2);
   assert.ok(items[0].classList.contains('active') && /resuma o contrato/.test(items[0].textContent));
   finishAsk({ answer: 'ok', sources: [], conversationId: 9 });
+});
+
+test('context size is a select: analyses the PC, marks the best option, "Automatic" picks it at Start', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { window, calls, finishStart } = boot();
+  await tick();
+  const d = window.document;
+  const chat = d.querySelector('.srv[data-which="chat"]');
+  const sel = chat.querySelector('.ctx-select');
+  assert.strictEqual(sel.tagName, 'SELECT');
+  assert.strictEqual(sel.value, '8192', 'shows the -c already in the arguments');
+  const labels = [...sel.options].map((o) => o.textContent);
+  assert.match(labels[0], /^Automatic: best for this PC \(★ 16,384 tokens\)/);
+  assert.ok(labels.find((l) => l.startsWith('★ 16,384')), 'best size starred');
+  assert.ok(labels.find((l) => l.includes('131,072') && l.includes('⚠')), 'too-heavy sizes are flagged');
+  // choosing a size writes -c into the arguments
+  sel.value = '4096';
+  sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.match(chat.querySelector('[data-k="args"]').value, /-c 4096/);
+  // Automatic resolves to the recommendation when the server starts
+  sel.value = 'auto';
+  sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+  chat.querySelector('.start').click();
+  await tick();
+  assert.match(chat.querySelector('[data-k="args"]').value, /-c 16384/);
+  finishStart();
 });

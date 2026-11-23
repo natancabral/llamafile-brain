@@ -202,11 +202,22 @@ async function primeSysInfo() {
   }
 }
 
+/** The computer's clock, so the model can answer "what day is it?" (a model has no clock of its own). */
+function dateTimeLine(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const off = -now.getTimezoneOffset();
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
+  const iso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const weekday = now.toLocaleDateString('en-US', { weekday: 'long' });
+  return `Current date and time on the user's computer: ${weekday}, ${iso} (${tz}, UTC${off < 0 ? '-' : '+'}${pad(Math.floor(Math.abs(off) / 60))}:${pad(Math.abs(off) % 60)})`;
+}
+
 /** Short block for the chat's system prompt: the model really knows what machine it runs on. No MAC/IPs. */
 function systemContextBlock() {
   const cpus = os.cpus() || [];
   const gb1 = (b) => (b / 1073741824).toFixed(1);
   const lines = [
+    dateTimeLine(),
     `Computer name: ${os.hostname()}`,
     cached.model && `Computer model: ${cached.model}`,
     `System: ${{ darwin: 'macOS', win32: 'Windows', linux: 'Linux' }[process.platform] || process.platform} ${os.release()} (${os.arch()})`,
@@ -214,7 +225,7 @@ function systemContextBlock() {
     `RAM: ${gb1(os.totalmem())} GB total`,
     cached.gpus.length && `Graphics: ${cached.gpus.join('; ')}`,
   ].filter(Boolean);
-  return `Facts about the computer the user is running this app on (collected by the app, real data). You CAN answer questions about this computer from them; never say you have no access to the machine. For other details (disks, network, MAC) tell the user to open Settings → Computer, or ask "what is my MAC address?".\n${lines.map((l) => `- ${l}`).join('\n')}`;
+  return `Facts about the computer the user is running this app on (collected by the app, real data). You CAN answer questions about this computer from them, including today's date and the current time (use the "Current date and time" line, answering in the language the user writes in); never say you have no access to the machine or to the calendar. For other details (disks, network, MAC) tell the user to open Settings → Computer, or ask "what is my MAC address?".\n${lines.map((l) => `- ${l}`).join('\n')}`;
 }
 
 // ---------------------------------------------------------------- intent (en / pt / es, code-driven like the memory commands)
@@ -282,4 +293,4 @@ async function answerSysInfo(topics) {
   return lines.join('\n');
 }
 
-module.exports = { parseWmic, primeSysInfo, systemContextBlock, ALL_TOPICS, getSysInfo, availableMemory, parseSysInfoIntent, answerSysInfo };
+module.exports = { parseWmic, primeSysInfo, systemContextBlock, dateTimeLine, ALL_TOPICS, getSysInfo, availableMemory, parseSysInfoIntent, answerSysInfo };
