@@ -32,11 +32,15 @@ Use it to study, research, document projects, organize contracts and notes — a
 - 🔎 **Hybrid search in SQLite**: keywords (FTS5/BM25) + vectors, fused with RRF — a single `brain.sqlite` file.
 - 📁 **You choose the locations**: document folders, a *brain* folder (your notes, with priority) and where the database lives.
 - 🔄 **Automatic reindexing** when files change; incremental indexing.
+- 🗃️ **Huge files**: `.sql` dumps and SQLite databases (up to 4 GB) are read as a stream and searched by keyword with constant memory.
 - 📄 **Many formats**: text and code, PDF, Word, Excel, PowerPoint, ODT/ODS/ODP, SQL, JSON, CSV; legacy formats (`.doc` `.xls` `.ppt` `.rtf`) through LibreOffice.
 - 🖼️ **OCR** for scanned PDFs and images (Tesseract).
 - 🧠 **Explicit memory**: `remember that…`, `forget…`, `what do you remember` + a fixed profile — you control what is stored (the commands also work in Portuguese and Spanish).
 - 🎯 **Evaluation tab**: measure search quality with your own questions (hit rate and MRR).
-- ⚡ **Performance under control**: GPU automatic / on / CPU only, context, history and question-token limits.
+- ⏸️ **Pause / resume indexing** whenever you need your RAM back; **indexing log** (what was captured from each file) and **problems log** (skipped files with path, size and reason — a bad file never stops the run).
+- 🛟 **Answers that do not invent**: hidden honesty rules, low temperature, a *strict mode* that says "I did not find this in your files" instead of guessing, and a **source-confidence %** under each answer based on the search evidence.
+- 🖥️ **Knows your machine**: a *Computer* tab (name, model, CPU, RAM, GPU, disks, network) and the chat can answer "what is my GPU?" from real data — no Python needed.
+- ⚡ **Performance under control**: GPU automatic / on / CPU only, context size (with RAM advice), history and question-token limits.
 - 🧰 **Installs what is missing** (OCR, Poppler, LibreOffice) with one click, asking for confirmation first.
 - 🛡️ **Secure by default**: only reads the folders you allow, never indexes secrets (`.env`, keys), isolated UI.
 
@@ -145,13 +149,14 @@ More detail in [docs/MODELS.md](docs/MODELS.md).
 
 | Tab | What it does |
 |---|---|
-| **Servers** | Chat, Embeddings and Reranker: start a llamafile (port, GPU, arguments) or use an external server (Ollama etc.) |
+| **Setup** | OCR (enable, languages, max pages) and installing Tesseract, Poppler and LibreOffice |
+| **Servers** | Chat, Embeddings and Reranker: start a llamafile (port, GPU, context size, arguments) or use an external server (Ollama etc.). Default ports: 8871, 8872, 8873 |
 | **Knowledge** | SQLite folder, *brain* folder, document folders, ignore list, automatic reindexing, Index/Clear |
 | **Memory** | On/off, add/delete, fixed profile, character limit |
-| **Search** | Use files, question token limit, top-k, context, history, temperature, vector×keyword weight, reranker |
+| **Search** | Use files, question token limit, top-k, context, history, temperature, strict mode and minimum relevance, vector×keyword weight, reranker |
 | **Evaluation** | Measures search quality with your own set of questions |
-| **Setup** | OCR (enable, languages, max pages) and installing Tesseract, Poppler and LibreOffice |
-| **Logs** | Output of the servers and of the indexing |
+| **Computer** | Data about this machine: name, model, system, CPU, RAM, GPU, disks and network |
+| **Logs** | Output of the servers, the **indexing log** (what was captured) and the **problems log** (skipped files) |
 
 ## Language
 
@@ -172,6 +177,7 @@ Memory is written **only** by these commands (never by the model) and exported t
 | Type | Extensions |
 |---|---|
 | Text and code | `.md .txt .rst .json .yml .toml .xml .csv .sql .js .ts .py .java .go .rs .php .c .cpp .sh .html .css` and more |
+| Huge files (keyword search) | `.sql` above 1 MB and SQLite databases `.sqlite .sqlite3 .db .db3` (up to 4 GB, read as a stream) |
 | Documents | `.pdf` (with OCR if scanned), `.docx`, `.odt` |
 | Spreadsheets | `.xlsx`, `.xlsm`, `.ods` |
 | Presentations | `.pptx`, `.odp` |
@@ -232,7 +238,7 @@ npm run release:all      # tries all three
 Files land in `dist/` with `SHA256SUMS.txt`. To build **everything at once** without owning all three systems, push a tag and let GitHub Actions do it:
 
 ```bash
-git tag v0.1.0 && git push origin main --tags
+git tag v0.2.0 && git push origin main --tags
 ```
 
 Details (prerequisites, code signing): [docs/RELEASING.md](docs/RELEASING.md).
@@ -247,7 +253,8 @@ Details (prerequisites, code signing): [docs/RELEASING.md](docs/RELEASING.md).
 ## Limitations
 
 - Quality depends on the models: a small model (2B) answers more simply and can be wrong. Check the cited sources and use the **Evaluation** tab.
-- Vector search is brute force in memory (fine up to a few hundred thousand chunks).
+- Vector search is brute force (in memory up to 20,000 vectors, then scanned in blocks with constant RAM). Huge `.sql` and SQLite files are searched by keyword only — no semantic search in them.
+- The source-confidence % measures how well your files support an answer; it does not guarantee the answer is true.
 - The *reranker* endpoint format varies between servers.
 - Installers are not code-signed (see the note under [Download](#-download)).
 - Linux is 64-bit only (Electron no longer ships 32-bit builds).

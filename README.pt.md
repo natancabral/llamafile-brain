@@ -32,11 +32,15 @@ Serve para estudar, pesquisar, documentar projetos, organizar contratos e anota�
 - 🔎 **Busca híbrida em SQLite**: palavras-chave (FTS5/BM25) + vetores, fundidos por RRF — um único arquivo `brain.sqlite`.
 - 📁 **Você escolhe os locais**: pastas de documentos, pasta *brain* (suas notas, com prioridade) e onde fica o banco.
 - 🔄 **Reindexação automática** quando os arquivos mudam; indexação incremental.
+- 🗃️ **Arquivos enormes**: dumps `.sql` e bancos SQLite (até 4 GB) são lidos em streaming e pesquisados por palavra-chave com memória constante.
 - 📄 **Muitos formatos**: texto e código, PDF, Word, Excel, PowerPoint, ODT/ODS/ODP, SQL, JSON, CSV; formatos antigos (`.doc` `.xls` `.ppt` `.rtf`) via LibreOffice.
 - 🖼️ **OCR** para PDFs escaneados e imagens (Tesseract).
 - 🧠 **Memória explícita**: `lembre que…`, `esqueça…`, `o que você lembra` + perfil fixo — você controla o que fica guardado (os comandos também funcionam em inglês e espanhol).
 - 🎯 **Aba Avaliação**: meça a qualidade da busca com as suas perguntas (taxa de acerto e MRR).
-- ⚡ **Desempenho sob controle**: GPU automática / usar / só CPU, limite de contexto, de histórico e de tokens da pergunta.
+- ⏸️ **Pausar / retomar a indexação** quando precisar da RAM de volta; **log de indexação** (o que foi capturado de cada arquivo) e **log de problemas** (arquivos ignorados com caminho, tamanho e motivo — um arquivo ruim nunca interrompe a execução).
+- 🛟 **Respostas que não inventam**: regras de honestidade ocultas, temperatura baixa, um *modo estrito* que diz "não encontrei isso nos seus arquivos" em vez de chutar e uma **% de confiança nas fontes** sob cada resposta, baseada na evidência da busca.
+- 🖥️ **Conhece a sua máquina**: aba *Computador* (nome, modelo, CPU, RAM, GPU, discos, rede) e o chat responde "qual minha placa de vídeo?" com dados reais — sem precisar de Python.
+- ⚡ **Desempenho sob controle**: GPU automática / usar / só CPU, tamanho do contexto (com sugestão pela RAM), limite de histórico e de tokens da pergunta.
 - 🧰 **Instala o que falta** (OCR, Poppler, LibreOffice) com um clique, pedindo confirmação.
 - 🛡️ **Seguro por padrão**: só lê as pastas permitidas, nunca indexa segredos (`.env`, chaves), interface isolada.
 
@@ -145,13 +149,14 @@ Mais detalhes em [docs/MODELS.md](docs/pt/MODELS.md).
 
 | Aba | O que faz |
 |---|---|
-| **Servidores** | Chat, Embeddings e Reranker: iniciar um llamafile (porta, GPU, argumentos) ou usar um servidor externo (Ollama etc.) |
+| **Instalação** | OCR (ativar, idiomas, máx. páginas) e instalação de Tesseract, Poppler e LibreOffice |
+| **Servidores** | Chat, Embeddings e Reranker: iniciar um llamafile (porta, GPU, tamanho do contexto, argumentos) ou usar um servidor externo (Ollama etc.). Portas padrão: 8871, 8872, 8873 |
 | **Conhecimento** | Pasta do SQLite, pasta *brain*, pastas de documentos, lista de ignorados, reindexação automática, Indexar/Limpar |
 | **Memória** | Liga/desliga, adicionar/apagar, perfil fixo, limite de caracteres |
-| **Busca** | Usar arquivos, limite de tokens da pergunta, top-k, contexto, histórico, temperatura, peso vetor×palavras, reranker |
+| **Busca** | Usar arquivos, limite de tokens da pergunta, top-k, contexto, histórico, temperatura, modo estrito e relevância mínima, peso vetor×palavras, reranker |
 | **Avaliação** | Mede a qualidade da busca com o seu conjunto de perguntas |
-| **Instalação** | OCR (ativar, idiomas, máx. páginas) e instalação de Tesseract, Poppler e LibreOffice |
-| **Logs** | Saída dos servidores e da indexação |
+| **Computador** | Dados desta máquina: nome, modelo, sistema, CPU, RAM, GPU, discos e rede |
+| **Logs** | Saída dos servidores, **log de indexação** (o que foi capturado) e **log de problemas** (arquivos ignorados) |
 
 ## Idioma
 
@@ -172,6 +177,7 @@ A memória é gravada **apenas** por esses comandos (nunca pelo modelo) e export
 | Tipo | Extensões |
 |---|---|
 | Texto e código | `.md .txt .rst .json .yml .toml .xml .csv .sql .js .ts .py .java .go .rs .php .c .cpp .sh .html .css` e outras |
+| Arquivos enormes (busca por palavra) | `.sql` acima de 1 MB e bancos SQLite `.sqlite .sqlite3 .db .db3` (até 4 GB, lidos em streaming) |
 | Documentos | `.pdf` (com OCR se escaneado), `.docx`, `.odt` |
 | Planilhas | `.xlsx`, `.xlsm`, `.ods` |
 | Apresentações | `.pptx`, `.odp` |
@@ -232,7 +238,7 @@ npm run release:all      # tenta os três
 Os arquivos saem em `dist/` com `SHA256SUMS.txt`. Para gerar **todos de uma vez** sem ter os três sistemas, envie uma tag e deixe o GitHub Actions fazer:
 
 ```bash
-git tag v0.1.0 && git push origin main --tags
+git tag v0.2.0 && git push origin main --tags
 ```
 
 Detalhes (pré-requisitos, assinatura de código): [docs/RELEASING.md](docs/pt/RELEASING.md).
@@ -247,7 +253,8 @@ Detalhes (pré-requisitos, assinatura de código): [docs/RELEASING.md](docs/pt/R
 ## Limitações
 
 - A qualidade depende dos modelos: um modelo pequeno (2B) responde mais simples e pode errar. Confira as fontes citadas e use a aba **Avaliação**.
-- A busca vetorial é por força bruta em memória (boa até algumas centenas de milhares de trechos).
+- A busca vetorial é por força bruta (em memória até 20.000 vetores; acima disso, varre em blocos com RAM constante). Arquivos `.sql` e SQLite enormes só têm busca por palavra-chave — sem busca semântica neles.
+- A % de confiança nas fontes mede o quanto os seus arquivos sustentam a resposta; não garante que ela seja verdadeira.
 - O formato do endpoint do *reranker* varia entre servidores.
 - Instaladores sem assinatura de código (veja o aviso em [Baixar](#-baixar)).
 - Linux só em 64 bits (o Electron não oferece mais 32 bits).

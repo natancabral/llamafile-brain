@@ -1,6 +1,6 @@
 {
   "name": "llamafile-brain",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Chat with your own files using a local model (Mozilla llamafile, Ollama…): hybrid RAG in SQLite, memory and OCR — all on your machine.",
   "main": "src/main.js",
   "scripts": {

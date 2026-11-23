@@ -463,3 +463,144 @@ test('external server "Start" really checks the URL and the model', async () => 
     mock.server.close();
   }
 });
+
+// ============================================================ error log + pause
+test('indexer: a too-large file is logged (path, size, reason) and does not stop the run; pause waits and resumes', async () => {
+  const { ErrorLog } = require('../src/core/errorlog');
+  const mock = await startMock();
+  const docs = tmpdir();
+  write(docs, 'ok.md', '# Ok\nconteudo pequeno e valido\n');
+  const big = write(docs, 'enorme.txt', 'a'.repeat(1024 * 1024 + 10));
+  const elog = new ErrorLog(path.join(tmpdir(), 'errors.sqlite'));
+  const db = new BrainDB(':memory:');
+  const roots = [{ dir: docs, kind: 'doc' }];
+
+  let paused = true;
+  setTimeout(() => (paused = false), 900);
+  const t0 = Date.now();
+  const r = await indexFolders({ roots, db, embedUrl: mock.url, errorLog: elog, isPaused: () => paused });
+  assert.ok(Date.now() - t0 >= 800, 'waited while paused');
+  assert.equal(r.indexed, 1);
+  const rows = elog.list();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].path, big);
+  assert.equal(rows[0].kind, 'too_large');
+  assert.ok(rows[0].size > 1024 * 1024 && rows[0].limit === 1024 * 1024);
+
+  // indexing log: what was indexed and what was captured
+  const files = db.listIndexedFiles();
+  assert.equal(files.length, 1);
+  assert.equal(files[0].action, 'indexed');
+  assert.ok(files[0].chunks >= 1 && files[0].chars > 0);
+  assert.match(db.fileChunks(files[0].path)[0].text, /conteudo pequeno/);
+  assert.equal(db.listIndexedFiles('ok.md').length, 1);
+  assert.equal(db.listIndexedFiles('nada%').length, 0);
+  assert.match(db.listIndexLog()[0].preview, /conteudo/);
+
+  // re-running only refreshes the same row; deleting the file prunes it
+  await indexFolders({ roots, db, embedUrl: mock.url, errorLog: elog });
+  assert.equal(elog.count(), 1);
+  fs.unlinkSync(big);
+  await indexFolders({ roots, db, embedUrl: mock.url, errorLog: elog });
+  assert.equal(elog.count(), 0);
+  elog.close();
+  db.close();
+  mock.server.close();
+});
+
+// ============================================================ huge files (stream, keyword-only) + block vector scan
+test('indexer: big .sql and SQLite files are streamed keyword-only (no embeddings) and found by keyword search', async () => {
+  const { DatabaseSync } = require('node:sqlite');
+  const mock = await startMock();
+  const docs = tmpdir();
+  const lines = ['CREATE TABLE clientes (id INTEGER, nome TEXT);'];
+  for (let i = 0; i < 40000; i++) lines.push(`INSERT INTO clientes VALUES (${i}, 'cliente numero ${i} zebra');`);
+  const sql = write(docs, 'dump.sql', lines.join('\n') + '\n'); // > 1 MB
+  assert.ok(fs.statSync(sql).size > 1024 * 1024);
+  const dbf = path.join(docs, 'dados.sqlite');
+  const sdb = new DatabaseSync(dbf);
+  sdb.exec('CREATE TABLE produtos (id INTEGER PRIMARY KEY, nome TEXT, preco REAL)');
+  const ins = sdb.prepare('INSERT INTO produtos(nome, preco) VALUES (?, ?)');
+  for (let i = 0; i < 300; i++) ins.run(i === 150 ? 'unicornio raro' : `item ${i}`, i);
+  sdb.close();
+
+  const db = new BrainDB(':memory:');
+  const elog = new (require('../src/core/errorlog').ErrorLog)(path.join(tmpdir(), 'e.sqlite'));
+  const r = await indexFolders({ roots: [{ dir: docs, kind: 'doc' }], db, embedUrl: mock.url, errorLog: elog });
+  assert.equal(r.indexed, 2);
+  assert.equal(mock.seen.embedCalls, 0, 'no embeddings for streamed files');
+  assert.equal(elog.count(), 0);
+  const hit = db.search({ queryText: 'unicornio', limit: 3 });
+  assert.ok(hit.length && /unicornio raro/.test(hit[0].text) && hit[0].path.endsWith('dados.sqlite'));
+  assert.ok(db.search({ queryText: 'clientes', limit: 3 }).some((h) => h.path === sql));
+  // unchanged on the second run
+  const r2 = await indexFolders({ roots: [{ dir: docs, kind: 'doc' }], db, embedUrl: mock.url });
+  assert.equal(r2.unchanged, 2);
+  elog.close();
+  db.close();
+  mock.server.close();
+});
+
+test('db: block vector scan returns the same top results as the in-memory scan', () => {
+  const db = new BrainDB(':memory:');
+  const vecs = [];
+  const chunks = [];
+  for (let i = 0; i < 300; i++) {
+    chunks.push({ start: 1, end: 1, text: `chunk ${i}` });
+    vecs.push(Array.from({ length: 16 }, (_, j) => Math.sin(i * 7 + j * 3)));
+  }
+  db.addFile({ path: '/x.txt', hash: 'h', mtime: 1, size: 1, kind: 'doc', chunks, vectors: vecs });
+  const q = vecs[42].map((x) => x + 0.01);
+  const a = db._vectorRank(q, 5).map((x) => x.id);
+  const b = db._vectorRankBlocks(q, 5).map((x) => x.id);
+  assert.deepEqual(b, a);
+  db.close();
+});
+
+// ============================================================ anti-hallucination: refuse without evidence, confidence badge
+test('rag: a question about the files with no relevant excerpt is refused without calling the model; answers carry a confidence', async () => {
+  const mock = await startMock({ chatReply: 'Resposta baseada no trecho [1].' });
+  const docs = tmpdir();
+  write(docs, 'cobranca.md', '# Cobrança\nO sistema de cobrança usa Pix e boleto bancário.\n');
+  const db = new BrainDB(':memory:');
+  await indexFolders({ roots: [{ dir: docs, kind: 'doc' }], db, embedUrl: mock.url });
+  const settings = baseSettings(mock.url);
+
+  // relevant: the excerpt is used, the answer gets a percentage
+  let r = await ask({ question: 'como funciona a cobrança com pix e boleto?', history: [], db, settings });
+  assert.ok(r.confidence && r.confidence.pct > 0 && r.confidence.pct <= 95, JSON.stringify(r.confidence));
+  const used = mock.seen.chatBodies.length;
+  assert.ok(used >= 1);
+  assert.ok(mock.seen.chatBodies[used - 1].temperature <= 0.1, 'grounded answers use a low temperature');
+  assert.match(JSON.stringify(mock.seen.chatBodies[used - 1].messages[0].content), /Never invent/);
+
+  // about the files but nothing relevant: refused, the model is not called
+  const strictQ = 'o que dizem meus documentos sobre astronomia e buracos negros?';
+  r = await ask({ question: strictQ, history: [], db, settings: baseSettings(mock.url, { grounding: { strict: true, minCos: 0.9 } }) });
+  assert.equal(r.confidence.pct, 0);
+  assert.equal(mock.seen.chatBodies.length, used, 'model not called');
+  assert.match(r.answer, /não vou chutar|won't guess|no voy a adivinar/i);
+
+  db.close();
+  mock.server.close();
+});
+
+test('indexer: FTS shadow tables of a SQLite file are skipped; keyword-only evidence is usable', async () => {
+  const { DatabaseSync } = require('node:sqlite');
+  const { assessEvidence } = require('../src/core/rag');
+  const mock = await startMock();
+  const docs = tmpdir();
+  const f = path.join(docs, 'k.sqlite3');
+  const sdb = new DatabaseSync(f);
+  sdb.exec("CREATE VIRTUAL TABLE knowledge USING fts5(body); INSERT INTO knowledge(body) VALUES ('sprint act 34 decisao importante');");
+  sdb.close();
+  const db = new BrainDB(':memory:');
+  await indexFolders({ roots: [{ dir: docs, kind: 'doc' }], db, embedUrl: mock.url });
+  const titles = db.db.prepare('SELECT DISTINCT title FROM chunks').all().map((r) => r.title).join('|');
+  assert.ok(/table knowledge/.test(titles));
+  assert.ok(!/knowledge_(content|data|idx|docsize|config)/.test(titles.replace(/schema: table knowledge_\w+/g, '')), titles);
+  assert.ok(assessEvidence([{ cos: 0.2 }, { bm25: -9 }]).usable, 'strong keyword hit without a vector counts');
+  assert.ok(!assessEvidence([{ cos: 0.2 }, { bm25: -0.4 }]).usable);
+  db.close();
+  mock.server.close();
+});

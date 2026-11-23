@@ -2,7 +2,7 @@
 
 *(English: [docs/TROUBLESHOOTING.md](../TROUBLESHOOTING.md))*
 
-## "Não consegui conectar em 127.0.0.1:8081"
+## "Não consegui conectar em 127.0.0.1:8872"
 O servidor de **Embeddings** não está rodando. Em **Servidores**, clique em **Iniciar** (modo llamafile) ou confira a URL (modo externo; Ollama: `http://127.0.0.1:11434`).
 
 ## "Pooling type 'none' is not OAI compatible"

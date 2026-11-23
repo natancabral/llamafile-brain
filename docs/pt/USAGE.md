@@ -21,9 +21,9 @@ Atalho com Ollama (opcional): instale o [Ollama](https://ollama.com) e rode `oll
 
 **Embeddings:**
 - Com Ollama: Modo *Servidor externo*, URL `http://127.0.0.1:11434`, modelo `embeddinggemma`.
-- Só com llamafile: Modo *Iniciar llamafile*, escolha o arquivo, porta `8081`. O app já usa `--embedding --pooling mean`.
+- Só com llamafile: Modo *Iniciar llamafile*, escolha o arquivo, porta `8872`. O app já usa `--embedding --pooling mean`.
 
-> Use portas diferentes para cada servidor (chat 8080, embeddings 8081, reranker 8082).
+> Use portas diferentes para cada servidor (chat 8871, embeddings 8872, reranker 8873).
 
 ## 3. Escolha o que ler (aba **Conhecimento**)
 

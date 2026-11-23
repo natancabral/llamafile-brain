@@ -1,6 +1,6 @@
 'use strict';
 
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn, spawnSync, execFile } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
@@ -34,6 +34,76 @@ function portFree(port, host = '127.0.0.1') {
     srv.once('listening', () => srv.close(() => resolve(true)));
     srv.listen(port, host);
   });
+}
+
+const sh = (cmd, args, timeout = 5000) =>
+  new Promise((resolve) => {
+    try {
+      execFile(cmd, args, { timeout, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => resolve(err && !stdout ? '' : String(stdout || '')));
+    } catch {
+      resolve('');
+    }
+  });
+
+/** Processes listening on a TCP port: [{ pid, name }]. lsof / ss on macOS+Linux, netstat on Windows. Never throws. */
+async function portOwners(port) {
+  const p = Number(port);
+  const pids = new Set();
+  if (process.platform === 'win32') {
+    const out = await sh('netstat', ['-ano', '-p', 'TCP']);
+    for (const line of out.split(/\r?\n/)) {
+      const m = /^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)/i.exec(line);
+      if (m && Number(m[1]) === p) pids.add(Number(m[2]));
+    }
+  } else {
+    const out = await sh('lsof', ['-nP', `-iTCP:${p}`, '-sTCP:LISTEN', '-t']);
+    out.split('\n').forEach((l) => /^\d+$/.test(l.trim()) && pids.add(Number(l.trim())));
+    if (!pids.size) {
+      // Linux without lsof
+      const ss = await sh('ss', ['-ltnpH', `sport = :${p}`]);
+      for (const m of ss.matchAll(/pid=(\d+)/g)) pids.add(Number(m[1]));
+    }
+  }
+  pids.delete(process.pid); // never offer to kill ourselves
+  const list = [];
+  for (const pid of pids) {
+    let name = '';
+    if (process.platform === 'win32') {
+      const o = await sh('tasklist', ['/fi', `PID eq ${pid}`, '/fo', 'csv', '/nh']);
+      name = (/^"([^"]+)"/.exec(o.trim()) || [])[1] || '';
+    } else {
+      name = (await sh('ps', ['-p', String(pid), '-o', 'comm='])).trim().split('/').pop();
+    }
+    list.push({ pid, name: name || '?' });
+  }
+  return list;
+}
+
+/** Stops whatever listens on the port (the whole tree on Windows) and waits until the port is free. Returns true when freed. */
+async function killPort(port, owners) {
+  const list = owners || (await portOwners(port));
+  for (const { pid } of list) {
+    try {
+      if (process.platform === 'win32') await sh('taskkill', ['/pid', String(pid), '/t', '/f']);
+      else process.kill(pid, 'SIGTERM');
+    } catch {
+      /* already gone */
+    }
+  }
+  for (let i = 0; i < 20; i++) {
+    if (await portFree(port)) return true;
+    if (i === 8 && process.platform !== 'win32') {
+      for (const { pid } of list) {
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          /* gone */
+        }
+      }
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return portFree(port);
 }
 
 /** Kills the process and its children (llamafile is started through /bin/sh, so killing only sh leaves it running). */
@@ -148,6 +218,10 @@ class LlamafileServer {
     if (embedding && !extra.includes('--embedding')) flags.push('--embedding');
     // Embeddings precisam de pooling; sem isso o servidor recusa /v1/embeddings ("Pooling type 'none'").
     if (embedding && !extra.some((a) => a === '--pooling' || a.startsWith('--pooling='))) flags.push('--pooling', 'mean');
+    // Embeddings não são divididos em lotes: o input inteiro precisa caber no ubatch (padrão 512).
+    // Texto denso (CSV, números, tabelas) passa de 512 tokens com ~1200 caracteres -> HTTP 500 "input is too large".
+    if (embedding && !extra.some((x) => x === '-b' || x === '--batch-size' || x.startsWith('--batch-size='))) flags.push('-b', '2048');
+    if (embedding && !extra.some((x) => x === '-ub' || x === '--ubatch-size' || x.startsWith('--ubatch-size='))) flags.push('-ub', '2048');
     flags.push(...gpuFlags(gpu, extra));
     const full = ['--server', '--host', host, '--port', String(port), ...flags, ...extra];
     const isWin = process.platform === 'win32';
@@ -226,4 +300,4 @@ class LlamafileServer {
   }
 }
 
-module.exports = { LlamafileServer, splitArgs, portFree, gpuFlags, setStateDir, reapOrphans };
+module.exports = { LlamafileServer, splitArgs, portFree, portOwners, killPort, gpuFlags, setStateDir, reapOrphans };

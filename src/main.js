@@ -9,9 +9,11 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const os = require('node:os');
-const { LlamafileServer, portFree, setStateDir, reapOrphans } = require('./core/llamafile');
+const { LlamafileServer, portFree, portOwners, killPort, setStateDir, reapOrphans } = require('./core/llamafile');
 const { checkExternal } = require('./core/client');
 const { BrainDB } = require('./core/db');
+const { availableMemory, getSysInfo, primeSysInfo } = require('./core/sysinfo');
+const { ErrorLog } = require('./core/errorlog');
 const { indexFolders, makeIgnore, SKIP_DIRS } = require('./core/indexer');
 const { ask, retrieve } = require('./core/rag');
 const { runEval } = require('./core/evalset');
@@ -25,11 +27,11 @@ const t = I18N.t;
 const SERVERS = ['chat', 'embed', 'rerank'];
 
 const DEFAULTS = {
-  chat: { mode: 'spawn', gpu: 'auto', file: '', port: 8080, args: '-c 8192', url: 'http://127.0.0.1:8080', model: 'local' },
-  embed: { mode: 'spawn', gpu: 'auto', file: '', port: 8081, args: '--pooling mean', url: 'http://127.0.0.1:8081', model: 'local' },
+  chat: { mode: 'spawn', gpu: 'auto', file: '', port: 8871, args: '-c 8192', url: 'http://127.0.0.1:8871', model: 'local' },
+  embed: { mode: 'spawn', gpu: 'auto', file: '', port: 8872, args: '--pooling mean', url: 'http://127.0.0.1:8872', model: 'local' },
   rerank: {
-    enabled: false, candidates: 20, mode: 'spawn', gpu: 'auto', file: '', port: 8082,
-    args: '--embedding --pooling rank --reranking', url: 'http://127.0.0.1:8082', model: 'local',
+    enabled: false, candidates: 20, mode: 'spawn', gpu: 'auto', file: '', port: 8873,
+    args: '--embedding --pooling rank --reranking', url: 'http://127.0.0.1:8873', model: 'local',
   },
   folders: [], // document folders the app may read
   brainDir: '', // personal notes folder (.md); memory is exported here as memory.md
@@ -45,6 +47,7 @@ const DEFAULTS = {
   historyTurns: 3,
   temperature: 0.2,
   summaryMaxFiles: 40,
+  grounding: { strict: true, minCos: 0.38 }, // do not answer from nothing: refuse questions about the files when the search finds no support
   hybrid: { vectorWeight: 0.6 },
   memory: { enabled: true, maxChars: 1500 },
   profile: '', // legacy (moved into the default profile)
@@ -58,6 +61,9 @@ let db = null;
 let dbError = null;
 let userDir;
 let indexAbort = null;
+let indexPaused = false; // pause/resume of the running index (frees CPU/RAM while waiting)
+let errorLog = null; // errors.sqlite: files the indexer skipped (too large, unreadable...), opened lazily
+const getErrorLog = () => (errorLog ||= new ErrorLog(path.join(userDir, 'errors.sqlite')));
 let chatAbort = null;
 let indexRunning = false;
 let indexPending = false;
@@ -84,9 +90,16 @@ function merge(base, saved) {
   }
   return out;
 }
+// Old default ports (8080/8081/8082) -> new ones (8871/8872/8873); custom ports are left alone.
+const OLD_PORTS = { chat: 8080, embed: 8081, rerank: 8082 };
 function loadSettings() {
   try {
-    return merge(DEFAULTS, JSON.parse(fs.readFileSync(path.join(userDir, 'settings.json'), 'utf8')));
+    const st = merge(DEFAULTS, JSON.parse(fs.readFileSync(path.join(userDir, 'settings.json'), 'utf8')));
+    for (const [k, old] of Object.entries(OLD_PORTS)) {
+      if (st[k].port === old) st[k].port = DEFAULTS[k].port;
+      if (st[k].url === `http://127.0.0.1:${old}`) st[k].url = `http://127.0.0.1:${st[k].port}`;
+    }
+    return st;
   } catch {
     return structuredClone(DEFAULTS);
   }
@@ -125,6 +138,10 @@ function applySettingsPatch(p = {}) {
   if ('topK' in p) settings.topK = num(p.topK, settings.topK, 1, 20);
   if ('contextChars' in p) settings.contextChars = num(p.contextChars, settings.contextChars, 1000, 60000);
   if ('historyTurns' in p) settings.historyTurns = num(p.historyTurns, settings.historyTurns, 0, 10);
+  if (p.grounding) {
+    if ('strict' in p.grounding) settings.grounding.strict = !!p.grounding.strict;
+    if ('minCos' in p.grounding) settings.grounding.minCos = num(p.grounding.minCos, 0.38, 0.1, 0.9);
+  }
   if ('temperature' in p) settings.temperature = num(p.temperature, settings.temperature, 0, 2);
   if ('summaryMaxFiles' in p) settings.summaryMaxFiles = num(p.summaryMaxFiles, 40, 1, 500);
   if (p.hybrid && 'vectorWeight' in p.hybrid) settings.hybrid.vectorWeight = num(p.hybrid.vectorWeight, 0.6, 0, 1);
@@ -233,11 +250,14 @@ async function runIndex({ auto = false } = {}) {
     if (es.mode === 'spawn' && es.file && servers.embed.status !== 'running') {
       log('index', t('idx.embedStart'));
       send('index-progress', { phase: 'embed', done: 0, total: 0 });
-      send('servers-status', state().servers);
+      broadcastServers();
       try {
         await servers.embed.start({ file: es.file, port: es.port, args: es.args, embedding: true, gpu: es.gpu });
+      } catch (e) {
+        // clear message (the UI offers a button to open the Servers settings)
+        throw new Error(t('idx.embedStartFail', { e: e.message }));
       } finally {
-        send('servers-status', state().servers);
+        broadcastServers();
       }
     }
     const result = await indexFolders({
@@ -248,6 +268,9 @@ async function runIndex({ auto = false } = {}) {
       ignore: settings.ignore,
       ocr: settings.ocr,
       signal: indexAbort.signal,
+      errorLog: getErrorLog(),
+      exclude: [dbFile(), getErrorLog().file],
+      isPaused: () => indexPaused,
       onProgress: (p) => send('index-progress', p),
     });
     send('index-done', { result, auto });
@@ -255,6 +278,7 @@ async function runIndex({ auto = false } = {}) {
   } finally {
     indexRunning = false;
     indexAbort = null;
+    indexPaused = false;
     if (indexPending) {
       indexPending = false;
       scheduleAutoIndex();
@@ -342,14 +366,15 @@ function registerIpc() {
   broadcastServers = () => send('servers-status', state().servers);
   ipcMain.handle('settings:get', () => state());
   // RAM numbers for the "memory / context size" advice (works the same on Linux, macOS and Windows)
-  ipcMain.handle('sys:memory', (_e, file) => {
+  ipcMain.handle('sys:info', () => getSysInfo());
+  ipcMain.handle('sys:memory', async (_e, file) => {
     let model = 0;
     try {
       if (file) model = fs.statSync(file).size;
     } catch {
       /* no file yet */
     }
-    return { total: os.totalmem(), free: os.freemem(), model };
+    return { total: os.totalmem(), free: await availableMemory(), model };
   });
   ipcMain.handle('settings:save', (_e, patch) => {
     applySettingsPatch(patch);
@@ -434,28 +459,41 @@ function registerIpc() {
     }
     const clash = SERVERS.find((o) => o !== which && settings[o].mode === 'spawn' && settings[o].port === s.port);
     if (clash) throw new Error(t('main.samePort', { a: which, b: clash, port: s.port }));
-    // Busy port: ask (modal) whether to switch to a random free one instead of just failing.
+    // Busy port: ask (modal). 1st option: stop the process using it (it may be the model already running);
+    // 2nd: switch to a random free port; 3rd: cancel.
     if (!(await portFree(s.port))) {
+      const owners = await portOwners(s.port);
+      const names = owners.map((o) => `${o.name} (PID ${o.pid})`).join(', ');
+      const buttons = [];
+      if (owners.length) buttons.push({ id: 'kill', label: t('dlg.portKill', { port: s.port }) });
+      buttons.push({ id: 'random', label: t('dlg.portChange') }, { id: 'cancel', label: t('dlg.cancel') });
       const { response } = await dialog.showMessageBox(win, {
         type: 'question',
-        buttons: [t('dlg.portChange'), t('dlg.cancel')],
+        buttons: buttons.map((b) => b.label),
         defaultId: 0,
-        cancelId: 1,
+        cancelId: buttons.length - 1,
         title: t('dlg.portTitle'),
         message: t('dlg.portMsg', { port: s.port }),
-        detail: t('dlg.portDetail'),
+        detail: owners.length ? t('dlg.portDetailWho', { who: names }) : t('dlg.portDetail'),
       });
-      if (response !== 0) throw new Error(t('srv.portBusy', { port: s.port }));
-      const taken = new Set(SERVERS.map((o) => settings[o].port));
-      let port = 0;
-      for (let i = 0; i < 50 && !port; i++) {
-        const c = 20000 + Math.floor(Math.random() * 40000);
-        if (!taken.has(c) && (await portFree(c))) port = c;
+      const choice = buttons[response]?.id || 'cancel';
+      if (choice === 'cancel') throw new Error(t('srv.portBusy', { port: s.port }));
+      if (choice === 'kill') {
+        log(which, t('dlg.portKilling', { port: s.port, who: names }));
+        if (!(await killPort(s.port, owners))) throw new Error(t('srv.portBusy', { port: s.port }));
+      } else {
+        const taken = new Set(SERVERS.map((o) => settings[o].port));
+        let port = 0;
+        for (let i = 0; i < 50 && !port; i++) {
+          const c = 20000 + Math.floor(Math.random() * 40000);
+          if (!taken.has(c) && (await portFree(c))) port = c;
+        }
+        if (!port) throw new Error(t('srv.portBusy', { port: s.port }));
+        s.port = port;
+        s.url = `http://127.0.0.1:${port}`;
+        saveSettings();
+        log(which, t('dlg.portChanged', { port }));
       }
-      if (!port) throw new Error(t('srv.portBusy', { port: s.port }));
-      s.port = port;
-      saveSettings();
-      log(which, t('dlg.portChanged', { port }));
     }
     try {
       // start() marks "starting" synchronously (and broadcasts it); sending before it would push a stale "stopped" to the UI
@@ -478,6 +516,23 @@ function registerIpc() {
     return runIndex({ auto: false });
   });
   ipcMain.handle('index:cancel', () => indexAbort?.abort());
+  ipcMain.handle('index:pause', (_e, on) => {
+    indexPaused = indexRunning ? (typeof on === 'boolean' ? on : !indexPaused) : false;
+    return indexPaused;
+  });
+  ipcMain.handle('idxlog:files', (_e, q) => getDb().listIndexedFiles(typeof q === 'string' ? q : ''));
+  ipcMain.handle('idxlog:chunks', (_e, p) => getDb().fileChunks(String(p)));
+  ipcMain.handle('idxlog:activity', () => getDb().listIndexLog());
+  ipcMain.handle('idxlog:clear', () => {
+    getDb().clearIndexLog();
+    return true;
+  });
+  ipcMain.handle('errors:list', () => ({ items: getErrorLog().list(), file: getErrorLog().file }));
+  ipcMain.handle('errors:count', () => getErrorLog().count());
+  ipcMain.handle('errors:clear', () => {
+    getErrorLog().clear();
+    return 0;
+  });
   ipcMain.handle('index:clear', () => {
     getDb().clear();
     return fullStats();
@@ -600,7 +655,7 @@ function registerIpc() {
   });
 
   // ---- chat
-  ipcMain.handle('chat:ask', async (_e, { question, conversationId }) => {
+  ipcMain.handle('chat:ask', async (_e, { question, conversationId, retry }) => {
     if (typeof question !== 'string' || !question.trim()) throw new Error('Pergunta vazia');
     const qTokens = estimateTokens(question);
     if (qTokens > settings.maxInputTokens) {
@@ -611,9 +666,12 @@ function registerIpc() {
     chatAbort = new AbortController();
     // The conversation lives in SQLite: history is read from there, not trusted from the UI.
     let convId = Number(conversationId) || 0;
+    let created = false;
     if (!convId || !database.listConversations().some((c) => c.id === convId)) {
       convId = database.createConversation(question.trim().replace(/\s+/g, ' '));
+      created = true;
     }
+    if (retry && !created) database.dropUnansweredUser(convId, question);
     const hist = database.getMessages(convId).map((m) => ({ role: m.role, content: m.content }));
     database.addMessage(convId, 'user', question);
     send('chats-changed', { ...chatsState(), conversationId: convId }); // the chat shows up in the left list right away
@@ -632,13 +690,18 @@ function registerIpc() {
           send('chat-warn', w);
         },
       });
-      database.addMessage(convId, 'assistant', r.answer || '', r.sources || []);
+      database.addMessage(convId, 'assistant', r.answer || '', r.sources || [], r.confidence ? r.confidence.pct : null);
       if (exportMemory()) send('memory-changed', database.listMemories());
       return { ...r, conversationId: convId, conversations: database.listConversations() };
     } catch (e) {
       if (e?.name === 'AbortError' || /abort/i.test(String(e?.message))) {
         // user pressed Stop: not an error (and not logged as one by Electron)
         return { answer: '', sources: [], aborted: true, conversationId: convId, conversations: database.listConversations() };
+      }
+      // a failed first question leaves no empty chat behind: the UI re-sends it (retry) and creates it again
+      if (created) {
+        database.deleteConversation(convId);
+        send('chats-changed', chatsState());
       }
       throw e;
     } finally {
@@ -712,6 +775,7 @@ app.whenReady().then(() => {
   settings = loadSettings();
   I18N.setLang(settings.language);
   openDb();
+  primeSysInfo(); // computer model / GPU lookups, so the chat prompt knows the machine
   registerIpc();
   createWindow();
   restartWatchers();
@@ -721,6 +785,8 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => {
+  indexAbort?.abort(); // stop an indexing run in progress
+  errorLog?.close();
   for (const s of Object.values(servers)) s.stop();
   for (const w of watchers) {
     try {
@@ -734,6 +800,6 @@ app.on('before-quit', () => {
 // Ctrl+C in the terminal / system shutdown: quit normally so 'before-quit' stops the servers this app started
 // (Ollama and other external servers are never touched).
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => app.quit());
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+// Closing the window ends the app on Linux, Windows and macOS (macOS would otherwise keep running in the Dock);
+// 'before-quit' then stops the llamafile servers this app started.
+app.on('window-all-closed', () => app.quit());

@@ -21,7 +21,7 @@ O Electron não oferece mais Linux de 32 bits.
 1. Atualize a versão em `package.json` e o `CHANGELOG.md`.
 2. Faça o commit e crie a tag:
    ```bash
-   git tag v0.1.0
+   git tag v0.2.0
    git push origin main --tags
    ```
 3. O workflow **Release** (`.github/workflows/release.yml`) compila em Linux, Windows e macOS e publica uma **GitHub Release** com todos os instaladores e o `SHA256SUMS.txt`.

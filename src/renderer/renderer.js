@@ -55,6 +55,7 @@ const SERVER_DEFS = [
 
 // ---------------------------------------------------------------- tabs
 function selectTab(name) {
+  if (name === 'machine') refreshMachine().catch(() => {});
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('hidden', p.dataset.panel !== name));
 }
@@ -204,40 +205,63 @@ $('vweight').addEventListener('input', updateVWeight);
 
 // ---------------------------------------------------------------- context size (-c), with RAM advice
 const CTX_RE = /(^|\s)(?:-c|--ctx-size)(?:\s+|=)(\d+)/;
-const CTX_PRESETS = [2048, 4096, 8192, 16384, 32768, 65536];
+const CTX = { def: 4096, min: 512, max: 131072 };
 const gb = (b) => (b / 1073741824).toFixed(1);
+const clampCtx = (n) => Math.min(CTX.max, Math.max(CTX.min, Math.round(Number(n) / 64) * 64 || CTX.def));
+let ctxMem = null; // last RAM reading { total, free, model } (same numbers on Linux, macOS and Windows)
+
+function paintCtxHint(block) {
+  const input = block.querySelector('.ctx-input');
+  const hint = block.querySelector('.ctx-hint');
+  const m = ctxMem;
+  const running = state?.servers?.chat === 'running'; // a running model is already counted as "used" memory
+  const modelGB = m.model / 1073741824;
+  const perTokenMB = Math.max(0.05, modelGB * 0.08); // rough KV-cache cost per token
+  const budgetMB = m.free / 1048576 - (running ? 0 : modelGB * 1024 * 1.1) - 1024;
+  const rec = Math.max(CTX.min, Math.min(32768, Math.floor(budgetMB / perTokenMB / 1024) * 1024)) || CTX.def;
+  const n = Number(input.value) || CTX.def;
+  let text = tr('srv.ctx.hint', { total: gb(m.total), free: gb(m.free), model: gb(m.model), rec, def: CTX.def, min: CTX.min, max: CTX.max.toLocaleString() });
+  if (n * perTokenMB > budgetMB) {
+    text += ` ${tr('srv.ctx.warn', { n: n.toLocaleString(), need: ((n * perTokenMB) / 1024).toFixed(1), avail: (Math.max(0, budgetMB) / 1024).toFixed(1) })}`;
+  }
+  richText(hint, text);
+  hint.classList.toggle('over', n * perTokenMB > budgetMB);
+}
+function writeCtxToArgs(block, value) {
+  const argsInput = block.querySelector('[data-k="args"]');
+  const v = argsInput.value;
+  const next = CTX_RE.test(v) ? v.replace(CTX_RE, `$1-c ${value}`) : `${v} -c ${value}`.trim();
+  if (next !== v) {
+    argsInput.value = next;
+    argsInput.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+/** Before the model starts: the value in the box (default 4096) always goes to the server as -c. */
+function ensureCtx(block) {
+  const input = block.querySelector('.ctx-input');
+  if (!input || block.querySelector('[data-k="mode"]').value !== 'spawn') return;
+  const n = clampCtx(input.value);
+  input.value = n;
+  writeCtxToArgs(block, n);
+}
 async function refreshCtx() {
   const block = document.querySelector('.srv[data-which="chat"]');
   if (!block || !window.api.getMemory) return;
   const argsInput = block.querySelector('[data-k="args"]');
-  const sel = block.querySelector('.ctx-select');
-  const m = await window.api.getMemory(block.querySelector('[data-k="file"]').value);
-  const running = state?.servers?.chat === 'running'; // a running model is already counted in "used" memory
-  const modelGB = m.model / 1073741824;
-  const perTokenMB = Math.max(0.05, modelGB * 0.08); // rough KV-cache cost per token
-  const budgetMB = m.free / 1048576 - (running ? 0 : modelGB * 1024 * 1.1) - 1024;
-  const fits = (n) => n * perTokenMB <= budgetMB;
-  const rec = [...CTX_PRESETS].reverse().find((n) => n <= 32768 && fits(n)) || CTX_PRESETS[0];
-  const cur = Number((CTX_RE.exec(argsInput.value) || [])[2]) || 0;
-  const list = [...new Set([...CTX_PRESETS, ...(cur ? [cur] : [])])].sort((a, b) => a - b);
-  sel.replaceChildren();
-  sel.append(new Option('—', ''));
-  for (const n of list) {
-    const label = CTX_PRESETS.includes(n) ? tr('srv.ctx.opt', { n, w: Math.round(n * 0.75).toLocaleString() }) : tr('srv.ctx.custom', { n });
-    sel.append(new Option(`${n === rec ? '★ ' : ''}${label}${fits(n) ? '' : ` ⚠ ${tr('srv.ctx.heavy')}`}`, String(n)));
-  }
-  sel.value = cur ? String(cur) : '';
-  const hint = block.querySelector('.ctx-hint');
-  richText(hint, tr('srv.ctx.hint', { total: gb(m.total), free: gb(m.free), model: gb(m.model), rec }));
+  const input = block.querySelector('.ctx-input');
+  ctxMem = await window.api.getMemory(block.querySelector('[data-k="file"]').value);
+  const fromArgs = Number((CTX_RE.exec(argsInput.value) || [])[2]) || 0;
+  if (document.activeElement !== input) input.value = fromArgs || CTX.def;
   block.querySelector('.ctx-wrap').classList.remove('hidden');
-  hint.classList.remove('hidden');
-  if (!sel.dataset.bound) {
-    sel.dataset.bound = '1';
-    sel.addEventListener('change', () => {
-      if (!sel.value) return;
-      const v = argsInput.value;
-      argsInput.value = CTX_RE.test(v) ? v.replace(CTX_RE, `$1-c ${sel.value}`) : `${v} -c ${sel.value}`.trim();
-      argsInput.dispatchEvent(new Event('change', { bubbles: true }));
+  block.querySelector('.ctx-hint').classList.remove('hidden');
+  paintCtxHint(block);
+  if (!input.dataset.bound) {
+    input.dataset.bound = '1';
+    input.addEventListener('input', () => ctxMem && paintCtxHint(block));
+    input.addEventListener('change', () => {
+      input.value = clampCtx(input.value);
+      writeCtxToArgs(block, input.value);
+      paintCtxHint(block);
     });
     argsInput.addEventListener('change', () => refreshCtx());
     block.querySelector('[data-k="file"]').addEventListener('change', () => refreshCtx());
@@ -275,6 +299,7 @@ function buildServers() {
       if (block.querySelector('.start').disabled) return;
       setStatus({ ...state.servers, [def.key]: 'starting' }); // feedback imediato: um clique basta
       try {
+        if (def.key === 'chat') ensureCtx(block);
         await saveAll();
         setStatus(await window.api.startServer(def.key));
       } catch (e) {
@@ -420,6 +445,13 @@ function hideBar() {
 }
 function barProgress(p) {
   showBar();
+  $('ib-servers').classList.add('hidden');
+  setPausedUi(p.phase === 'paused');
+  if (p.phase === 'paused') {
+    $('ib-title').textContent = tr('ib.title');
+    $('ib-line').textContent = tr('ib.paused');
+    return;
+  }
   if (!ib.t0) ib.t0 = Date.now();
   const bar = $('ib-progress');
   $('ib-title').textContent = tr('ib.title');
@@ -439,10 +471,12 @@ function barProgress(p) {
   const el_s = (Date.now() - ib.t0) / 1000;
   const parts = [tr('ib.elapsed', { t: fmtTime(el_s) })];
   if (p.done >= 2 && el_s > 3) parts.push(tr('ib.eta', { t: fmtTime((el_s / p.done) * (p.total - p.done)) }));
+  if (p.chunks) parts.push(tr('ib.streamChunks', { n: p.chunks.toLocaleString() }));
   parts.push(tr('ib.counts', { indexed: p.indexed || 0, unchanged: p.unchanged || 0, failed: p.failed || 0 }));
   $('ib-sub').textContent = parts.join(' · ');
 }
 function barDone(r) {
+  $('ib-servers').classList.add('hidden');
   const secs = ib.t0 ? (Date.now() - ib.t0) / 1000 : 0;
   ib.t0 = 0;
   showBar(r.failed?.length ? '' : 'done');
@@ -453,6 +487,7 @@ function barDone(r) {
   $('ib-sub').textContent = [tr('ib.doneNote', { indexed: r.indexed, unchanged: r.unchanged }), secs ? fmtTime(secs) : ''].filter(Boolean).join(' · ') +
     (r.failed?.length ? ` · ${tr('ib.counts', { indexed: r.indexed, unchanged: r.unchanged, failed: r.failed.length })}` : '');
   $('ib-cancel').classList.add('hidden');
+  $('ib-pause').classList.add('hidden');
   if (!r.failed?.length) ib.hide = setTimeout(hideBar, 8000); // problems stay until closed
 }
 function barError(msg) {
@@ -464,7 +499,20 @@ function barError(msg) {
   $('ib-line').textContent = msg;
   $('ib-sub').textContent = '';
   $('ib-cancel').classList.add('hidden');
+  $('ib-pause').classList.add('hidden');
+  $('ib-servers').classList.toggle('hidden', !isServerDown(msg)); // server not running / did not start -> button to fix it
 }
+let idxPaused = false;
+function setPausedUi(p) {
+  idxPaused = p;
+  $('ib-pause').textContent = tr(p ? 'ib.resume' : 'ib.pause');
+  $('ib-pause').classList.toggle('hidden', false);
+}
+$('ib-pause').onclick = async () => {
+  setPausedUi(await window.api.pauseIndex(!idxPaused));
+  if (idxPaused) $('ib-line').textContent = tr('ib.paused');
+};
+$('ib-servers').onclick = () => openSettings('servers');
 $('ib-close').onclick = hideBar;
 $('ib-cancel').onclick = () => window.api.cancelIndex();
 $('ib-details').onclick = () => openSettings('knowledge');
@@ -476,6 +524,7 @@ window.api.onIndexProgress((p) => {
 });
 window.api.onIndexDone(({ result: r, auto }) => {
   showStats(r);
+  refreshErrorCount();
   barDone(r);
   const lines = [auto ? tr('idx.doneAuto') : tr('idx.done'), tr('idx.counts', { indexed: r.indexed, unchanged: r.unchanged })];
   const sk = Object.entries(r.skipped || {}).map(([ext, n]) => `${n}× ${ext}`);
@@ -637,7 +686,8 @@ const scroll = () => (messages.scrollTop = messages.scrollHeight);
 
 // "Server not running" messages get a button that opens the Servers settings.
 const refusedStarts = () => I18N.ORDER.map((l) => I18N.t('net.refused', { where: '\u0000', code: '\u0001' }, l).split('\u0000')[0]);
-const isServerDown = (msg) => refusedStarts().some((p) => p && String(msg).includes(p));
+const startFailPrefixes = () => I18N.ORDER.map((l) => I18N.t('idx.embedStartFail', { e: '\u0000' }, l).split('\u0000')[0]);
+const isServerDown = (msg) => [...refusedStarts(), ...startFailPrefixes()].some((p) => p && String(msg).includes(p));
 function addServerButton(container, msg) {
   if (!isServerDown(msg) || container.querySelector('.msg-action')) return;
   const b = el('button', 'msg-action primary', tr('ui.openServers'));
@@ -694,6 +744,15 @@ window.api.onWarn((w) => {
   addServerButton(cur.d, w);
 });
 
+/** Evidence-based confidence badge (0-100) shown under answers that used the user's files. */
+function addConfidence(div, pct) {
+  if (pct == null) return;
+  const level = pct === 0 ? 'none' : pct >= 70 ? 'high' : pct >= 40 ? 'mid' : 'low';
+  const chip = el('div', `conf ${level}`, level === 'none' ? `${tr('conf.label', { pct: 0, level: tr('conf.none') })}` : tr('conf.label', { pct, level: tr(`conf.${level}`) }));
+  chip.title = tr('conf.tip');
+  div.append(chip);
+}
+
 function addSources(div, sources) {
   if (!sources.length) return;
   const box = el('div', 'sources');
@@ -727,20 +786,12 @@ function updateTokenCount() {
 $('input').addEventListener('input', updateTokenCount);
 document.addEventListener('change', (e) => e.target.matches?.('[data-s="maxInputTokens"]') && setTimeout(updateTokenCount, 0));
 
-$('form').onsubmit = async (e) => {
-  e.preventDefault();
-  const q = $('input').value.trim();
-  if (!q || busy || updateTokenCount()) return;
-  $('input').value = '';
-  updateTokenCount();
-  const u = el('div', 'msg user');
-  u.textContent = q; // user text stays plain text
-  messages.append(u);
+async function sendQuestion(q, u, retry = false) {
   cur = startAssistant();
   armIdle();
   setBusy(true);
   try {
-    const r = await window.api.ask(q, convId);
+    const r = await window.api.ask(q, convId, retry);
     convId = r.conversationId;
     chats.conversations = r.conversations || chats.conversations;
     renderChatList();
@@ -752,6 +803,7 @@ $('form').onsubmit = async (e) => {
     } else {
       renderMarkdown(cur.body, r.answer || tr('chat.noAnswer'));
       addSources(cur.d, r.sources || []);
+      addConfidence(cur.d, r.confidence ? r.confidence.pct : null);
     }
   } catch (err) {
     clearTimeout(cur.idle);
@@ -764,12 +816,42 @@ $('form').onsubmit = async (e) => {
       cur.raw += `\n\n${tr('chat.error', { e: msg })}`;
       renderMarkdown(cur.body, cur.raw);
       addServerButton(cur.d, msg);
+      markFailed(u, q, cur.d);
     }
   } finally {
     cur = null;
     setBusy(false);
     scroll();
   }
+}
+// A question that failed turns yellow and gets a Retry button; retrying drops the error reply and asks again.
+function markFailed(u, q, errDiv) {
+  u.classList.add('failed');
+  const b = el('button', 'retry-btn');
+  b.type = 'button';
+  b.dataset.icon = 'refresh'; // refresh icon (CSS mask), no text
+  b.title = tr('chat.retry');
+  b.setAttribute('aria-label', tr('chat.retry'));
+  b.onclick = () => {
+    if (busy) return;
+    u.classList.remove('failed');
+    b.remove();
+    errDiv.remove();
+    sendQuestion(q, u, true);
+  };
+  u.append(b);
+}
+
+$('form').onsubmit = async (e) => {
+  e.preventDefault();
+  const q = $('input').value.trim();
+  if (!q || busy || updateTokenCount()) return;
+  $('input').value = '';
+  updateTokenCount();
+  const u = el('div', 'msg user');
+  u.textContent = q; // user text stays plain text
+  messages.append(u);
+  await sendQuestion(q, u);
 };
 $('stop').onclick = () => window.api.cancelChat();
 $('input').addEventListener('keydown', (e) => {
@@ -807,6 +889,7 @@ async function openChat(id) {
       d.append(body);
       renderMarkdown(body, m.content);
       addSources(d, m.sources || []);
+      addConfidence(d, m.confidence);
       messages.append(d);
     }
   }
@@ -965,3 +1048,187 @@ $('lang').addEventListener('change', async () => {
 });
 $('eval-set').addEventListener('change', () => window.api.saveSettings({ evalSet: $('eval-set').value }));
 init();
+
+// ---------------------------------------------------------------- indexing problems (errors.sqlite)
+const fmtBytes = (n) => (n == null ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
+function errReason(r) {
+  const key = `err.kind.${r.kind}`;
+  return tr(key, { limit: fmtBytes(r.limit), detail: r.detail || '' });
+}
+async function refreshErrorCount() {
+  try {
+    const n = await window.api.countErrors();
+    const link = $('issues-link');
+    link.textContent = tr('err.link', { n });
+    link.classList.toggle('hidden', !n);
+    $('err-count').textContent = n ? `(${n})` : '';
+  } catch {
+    /* ignore */
+  }
+}
+async function refreshErrors() {
+  const { items, file } = await window.api.listErrors();
+  const body = $('err-table').querySelector('tbody');
+  body.replaceChildren();
+  for (const r of items) {
+    const tr_ = document.createElement('tr');
+    const name = el('td', null, r.path);
+    name.title = r.path;
+    tr_.append(name, el('td', null, fmtBytes(r.size)), el('td', null, errReason(r)), el('td', null, new Date(r.ts).toLocaleString()));
+    body.append(tr_);
+  }
+  $('err-table').classList.toggle('hidden', !items.length);
+  $('err-empty').classList.toggle('hidden', !!items.length);
+  $('err-count').textContent = items.length ? `(${items.length})` : '';
+  $('err-box').title = file || '';
+}
+$('err-box').addEventListener('toggle', () => $('err-box').open && refreshErrors());
+$('err-refresh').onclick = () => refreshErrors();
+$('err-clear').onclick = async () => {
+  await window.api.clearErrors();
+  await refreshErrors();
+  refreshErrorCount();
+};
+$('issues-link').onclick = () => {
+  openSettings('logs');
+  $('err-box').open = true;
+  refreshErrors();
+};
+refreshErrorCount();
+
+// ---------------------------------------------------------------- indexing log (what was indexed / captured)
+const ilCell = (row, text, title) => {
+  const td = el('td', null, text);
+  if (title) td.title = title;
+  row.append(td);
+  return td;
+};
+async function refreshIndexLog() {
+  const mode = $('il-mode').value;
+  const head = $('il-head');
+  const body = $('il-table').querySelector('tbody');
+  body.replaceChildren();
+  head.replaceChildren();
+  const hr = document.createElement('tr');
+  const cols = mode === 'files' ? ['file', 'size', 'captured', 'last'] : ['when', 'action', 'file', 'preview'];
+  cols.forEach((c) => hr.append(el('th', null, tr(`il.cols.${c}`))));
+  head.append(hr);
+  let n = 0;
+  if (mode === 'files') {
+    const items = await window.api.indexedFiles($('il-filter').value.trim());
+    n = items.length;
+    for (const f of items) {
+      const row = document.createElement('tr');
+      row.className = 'il-row';
+      ilCell(row, f.path, f.path);
+      ilCell(row, fmtBytes(f.size));
+      ilCell(row, tr('il.captured', { chunks: f.chunks, chars: (f.chars || 0).toLocaleString() }));
+      ilCell(row, f.action ? tr(`il.action.${f.action}`) : '');
+      row.onclick = async () => {
+        const next = row.nextElementSibling;
+        if (next?.classList.contains('il-detail')) return next.remove();
+        const det = document.createElement('tr');
+        det.className = 'il-detail';
+        const td = el('td');
+        td.colSpan = 4;
+        for (const c of await window.api.fileChunks(f.path)) {
+          td.append(el('div', 'il-meta', [c.title, tr('il.lines', { a: c.start, b: c.end })].filter(Boolean).join(' · ')));
+          td.append(el('pre', 'il-cap', c.text));
+        }
+        det.append(td);
+        row.after(det);
+      };
+      body.append(row);
+    }
+  } else {
+    const items = await window.api.indexActivity();
+    n = items.length;
+    for (const a of items) {
+      const row = document.createElement('tr');
+      ilCell(row, new Date(a.ts).toLocaleString());
+      ilCell(row, tr(`il.action.${a.action}`));
+      ilCell(row, a.path, a.path);
+      ilCell(row, a.preview || '', a.preview || '');
+      body.append(row);
+    }
+  }
+  $('il-table').classList.toggle('hidden', !n);
+  $('il-empty').classList.toggle('hidden', !!n);
+  $('il-count').textContent = n ? `(${n})` : '';
+  $('il-clear').classList.toggle('hidden', mode !== 'activity');
+}
+$('idx-box').addEventListener('toggle', () => $('idx-box').open && refreshIndexLog());
+$('il-mode').onchange = () => refreshIndexLog();
+$('il-refresh').onclick = () => refreshIndexLog();
+let ilTimer;
+$('il-filter').addEventListener('input', () => {
+  clearTimeout(ilTimer);
+  ilTimer = setTimeout(refreshIndexLog, 250);
+});
+$('il-clear').onclick = async () => {
+  await window.api.clearIndexLog();
+  refreshIndexLog();
+};
+
+// ---------------------------------------------------------------- Settings → Computer
+const fmtUptime = (sec) => {
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return [d && `${d}d`, h && `${h}h`, `${m}min`].filter(Boolean).join(' ');
+};
+function mcSection(title, rows, bars) {
+  const sec = el('div', 'mc-sec');
+  sec.append(el('h3', null, title));
+  const t = el('table', 'mc-table');
+  rows.forEach(([k, v], idx) => {
+    const tr_ = document.createElement('tr');
+    tr_.append(el('td', null, k));
+    const td = el('td', null, v);
+    if (bars?.[idx] != null) {
+      const b = el('div', `mc-bar${bars[idx] > 0.85 ? ' hot' : ''}`);
+      const i = document.createElement('i');
+      i.style.width = `${Math.round(Math.min(1, bars[idx]) * 100)}%`;
+      b.append(i);
+      td.append(b);
+    }
+    tr_.append(td);
+    t.append(tr_);
+  });
+  sec.append(t);
+  return sec;
+}
+async function refreshMachine() {
+  const i = await window.api.getSysInfo();
+  const g = (b) => `${(b / 1073741824).toFixed(1)} GB`;
+  const box = $('machine');
+  box.replaceChildren(
+    mcSection(tr('mc.general'), [
+      [tr('mc.name'), i.host],
+      [tr('mc.user'), i.user || '—'],
+      [tr('mc.model'), i.model || '—'],
+      [tr('mc.os'), i.os],
+      [tr('mc.uptime'), fmtUptime(i.uptime)],
+    ]),
+    mcSection(tr('mc.cpu'), [
+      [tr('mc.processor'), i.cpu ? i.cpu.name : '—'],
+      [tr('mc.threads'), i.cpu ? String(i.cpu.threads) : '—'],
+    ]),
+    mcSection(
+      tr('mc.memory'),
+      [
+        [tr('mc.ramTotal'), g(i.ramTotal)],
+        [tr('mc.ramFree'), `${g(i.ramFree)} (${Math.round((i.ramFree / i.ramTotal) * 100)}%)`],
+      ],
+      [null, 1 - i.ramFree / i.ramTotal],
+    ),
+    mcSection(tr('mc.gpu'), i.gpus.length ? i.gpus.map((x, n) => [`#${n + 1}`, x]) : [['—', tr('sys.unknown')]]),
+    mcSection(
+      tr('mc.disks'),
+      i.disks.length ? i.disks.map((d) => [d.mount, `${g(d.free)} ${tr('mc.free')} / ${g(d.total)}`]) : [['—', tr('sys.unknown')]],
+      i.disks.map((d) => (d.total ? 1 - d.free / d.total : null)),
+    ),
+    mcSection(tr('mc.network'), i.nets.length ? i.nets.map((n) => [n.name, [n.addrs.join(', '), n.mac && `MAC ${n.mac}`].filter(Boolean).join(' · ')]) : [['—', tr('sys.unknown')]]),
+  );
+}
+$('mc-refresh').onclick = () => refreshMachine().catch(() => {});

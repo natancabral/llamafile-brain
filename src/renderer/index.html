@@ -25,19 +25,20 @@
     </div>
     <div class="modal-body">
     <nav id="tabs">
-      <button data-i18n="tab.servers" data-tab="servers" data-icon="servers" class="active">Servers</button>
+      <button data-i18n="tab.setup" data-tab="setup" data-icon="setup" class="active">Setup</button>
+      <button data-i18n="tab.servers" data-tab="servers" data-icon="servers">Servers</button>
       <button data-i18n="tab.knowledge" data-tab="knowledge" data-icon="knowledge">Knowledge</button>
       <button data-i18n="tab.profiles" data-tab="profiles" data-icon="user">Profiles</button>
       <button data-i18n="tab.memory" data-tab="memory" data-icon="memory">Memory</button>
       <button data-i18n="tab.search" data-tab="search" data-icon="search">Search</button>
       <button data-i18n="tab.eval" data-tab="eval" data-icon="eval">Evaluation</button>
-      <button data-i18n="tab.setup" data-tab="setup" data-icon="setup">Setup</button>
+      <button data-i18n="tab.machine" data-tab="machine" data-icon="machine">Computer</button>
       <button data-i18n="tab.logs" data-tab="logs" data-icon="logs">Logs</button>
     </nav>
     <div id="sidebar">
 
     <!-- ============ Servers ============ -->
-    <section class="panel" data-panel="servers">
+    <section class="panel hidden" data-panel="servers">
       <div class="callout" id="models-help">
         <strong data-i18n="models.title">Where to download a model</strong>
         <p data-i18n="models.p1"></p>
@@ -121,6 +122,10 @@
       <label><span data-i18n="se.ctx">Context limit (characters)</span> <input type="number" data-s="contextChars" min="1000" max="60000" /></label>
       <label><span data-i18n="se.hist">History turns</span> <input type="number" data-s="historyTurns" min="0" max="10" /></label>
       <label><span data-i18n="se.temp">Temperature</span> <input type="number" data-s="temperature" step="0.1" min="0" max="2" /></label>
+      <p class="help" data-i18n="se.temp.help"></p>
+      <label class="check"><input type="checkbox" data-s="grounding.strict" /> <span data-i18n="se.strict">Strict mode: do not answer about my files without evidence</span></label>
+      <p class="help" data-i18n="se.strict.help"></p>
+      <label><span data-i18n="se.minCos">Minimum relevance to use an excerpt (0.1–0.9)</span> <input type="number" data-s="grounding.minCos" step="0.02" min="0.1" max="0.9" /></label>
       <label><span data-i18n="se.sumMax">Max files for "summarize the folder"</span> <input type="number" data-s="summaryMaxFiles" min="1" max="500" /></label>
 
       <h2 data-i18n="se.hybrid.h">Hybrid search</h2>
@@ -144,7 +149,7 @@
     </section>
 
     <!-- ============ Setup ============ -->
-    <section class="panel hidden" data-panel="setup">
+    <section class="panel" data-panel="setup">
       <h2 data-i18n="su.ocr.h">OCR (scanned PDFs and images)</h2>
       <label class="check"><input type="checkbox" data-s="ocr.enabled" /> <span data-i18n="su.ocr.on">Enable OCR</span></label>
       <div class="row2">
@@ -166,7 +171,31 @@
     </section>
 
     <!-- ============ Logs ============ -->
+    <section class="panel hidden" data-panel="machine">
+      <p class="help" data-i18n="mc.help">Data about this computer. The chat assistant also knows it, so you can ask things like "what is my GPU?" or "what is my MAC address?".</p>
+      <div class="row"><button id="mc-refresh" type="button" data-i18n="err.refresh">Refresh</button></div>
+      <div id="machine"></div>
+    </section>
     <section class="panel hidden" data-panel="logs">
+      <details id="idx-box" class="err-box">
+        <summary><span data-i18n="il.title">Indexing log</span> <span id="il-count" class="muted"></span></summary>
+        <p class="help" data-i18n="il.help">Which files were indexed and what was captured from each one. Click a file to see the captured text. Saved in the knowledge database.</p>
+        <div class="row">
+          <select id="il-mode"><option value="files" data-i18n="il.files">Indexed files</option><option value="activity" data-i18n="il.activity">Recent activity</option></select>
+          <input id="il-filter" type="search" data-i18n-ph="il.filter" placeholder="Filter by path..." />
+          <button id="il-refresh" type="button" data-i18n="err.refresh">Refresh</button>
+          <button id="il-clear" type="button" data-i18n="il.clear">Clear activity</button>
+        </div>
+        <div class="err-wrap"><table id="il-table"><thead id="il-head"></thead><tbody></tbody></table></div>
+        <p id="il-empty" class="help hidden" data-i18n="il.empty">Nothing indexed yet.</p>
+      </details>
+      <details id="err-box" class="err-box">
+        <summary><span data-i18n="err.title">Indexing problems</span> <span id="err-count" class="muted"></span></summary>
+        <p class="help" data-i18n="err.help">Files that were skipped or could not be read. Indexing continues without them. Saved in errors.sqlite.</p>
+        <div class="row"><button id="err-refresh" type="button" data-i18n="err.refresh">Refresh</button><button id="err-clear" type="button" data-i18n="err.clear">Clear list</button></div>
+        <div class="err-wrap"><table id="err-table"><thead><tr><th data-i18n="err.file">File</th><th data-i18n="err.size">Size</th><th data-i18n="err.reason">Reason</th><th data-i18n="err.when">When</th></tr></thead><tbody></tbody></table></div>
+        <p id="err-empty" class="help hidden" data-i18n="err.empty">No problems recorded.</p>
+      </details>
       <pre id="logs"></pre>
     </section>
     </div>
@@ -187,7 +216,7 @@
   <main>
     <header id="topbar">
       <button id="menu-btn" class="icon-btn" type="button" data-icon="menu" data-i18n-title="ui.menu" title="Chats" aria-label="Chats"></button>
-      <div class="brand"><img src="../../assets/icon.svg" alt="" width="28" height="28" /><h1>Llamafile Brain</h1></div>
+      <div class="brand"><img src="icon.svg" alt="" width="28" height="28" /><h1>Llamafile Brain</h1></div>
       <div class="pills">
         <span class="pill" id="pill-chat" role="button" tabindex="0"><i></i><span data-i18n="srv.chat.title">Chat</span></span>
         <span class="pill" id="pill-embed" role="button" tabindex="0"><i></i><span data-i18n="srv.embed.title">Embeddings</span></span>
@@ -211,6 +240,8 @@
         <span id="ib-pct" class="ib-pct"></span>
         <span class="ib-actions">
           <button id="ib-details" type="button" data-i18n="ib.details">Details</button>
+          <button id="ib-servers" class="primary hidden" type="button" data-i18n="ib.openServers">Open server settings</button>
+          <button id="ib-pause" type="button" data-i18n="ib.pause">Pause</button>
           <button id="ib-cancel" type="button" data-i18n="kn.cancel">Cancel</button>
           <button id="ib-close" class="icon-btn" type="button" data-i18n-title="ib.close" title="Close" aria-label="Close">✕</button>
         </span>
@@ -219,6 +250,7 @@
       <div id="ib-line" class="ib-line"></div>
       <div id="ib-sub" class="muted"></div>
     </div>
+    <div class="under-bar"><button id="issues-link" class="issues-link hidden" type="button"></button></div>
     <div id="token-count" class="token-count muted"></div>
     <form id="form">
       <textarea id="input" rows="2" data-i18n-ph="chat.ph" placeholder="Ask, chat or say &quot;remember that ...&quot;  (Enter sends, Shift+Enter new line)"></textarea>
@@ -249,7 +281,7 @@
           <div class="row"><input data-k="file" readonly /><button class="pick" type="button">…</button></div>
         </label>
         <label class="ctx-wrap hidden"><span data-i18n="srv.ctx">Conversation memory (context size)</span>
-          <select class="ctx-select"></select>
+          <input class="ctx-input" type="number" min="512" max="131072" step="512" />
         </label>
         <p class="help ctx-hint hidden"></p>
       </div>

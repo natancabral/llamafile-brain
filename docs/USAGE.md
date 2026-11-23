@@ -19,9 +19,9 @@ Optional shortcut with Ollama: install [Ollama](https://ollama.com) and run `oll
 
 **Embeddings:**
 - With Ollama: Mode *External server*, URL `http://127.0.0.1:11434`, model `embeddinggemma`.
-- With llamafile only: Mode *Start llamafile*, pick the file, port `8081`. The app already uses `--embedding --pooling mean`.
+- With llamafile only: Mode *Start llamafile*, pick the file, port `8872`. The app already uses `--embedding --pooling mean`.
 
-> Use a different port for each server (chat 8080, embeddings 8081, reranker 8082).
+> Use a different port for each server (chat 8871, embeddings 8872, reranker 8873).
 
 ## 3. Choose what to read (**Knowledge** tab)
 

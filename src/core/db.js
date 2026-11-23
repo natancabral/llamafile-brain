@@ -43,9 +43,13 @@ function normalize(arr) {
 /**
  * Everything the app remembers lives in one SQLite file:
  *   files / chunks (+FTS5 keyword index, embeddings as BLOB) and memories (+FTS5).
- * Vector search is brute-force cosine over an in-memory matrix loaded lazily (fine up to ~100k chunks);
+ * Vector search is brute-force cosine: an in-memory matrix for small bases (fast), and a block-by-block scan
+ * straight from SQLite for big ones (constant RAM). Huge files (big .sql, SQLite databases) are stored FTS-only, without vectors;
  * keyword search uses FTS5/bm25; both are fused with Reciprocal Rank Fusion.
  */
+const CACHE_MAX_VECTORS = 20000; // up to here the vectors live in RAM (~60 MB at 768 dims); above, they are scanned in blocks
+const VECTOR_BLOCK = 2000;
+
 class BrainDB {
   constructor(file) {
     this.file = file;
@@ -53,6 +57,7 @@ class BrainDB {
     this.db = openDatabase(file);
     this._migrate();
     this._cache = null;
+    this._vecN = null;
     this.profileId = this.defaultProfileId(); // memories and chats are scoped to the active profile
   }
 
@@ -93,9 +98,17 @@ class BrainDB {
         content TEXT NOT NULL, sources TEXT, created_at INTEGER
       );
       CREATE INDEX IF NOT EXISTS messages_conv ON messages(conversation_id, id);
+      CREATE TABLE IF NOT EXISTS index_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, path TEXT NOT NULL, action TEXT NOT NULL,
+        kind TEXT, size INTEGER, chunks INTEGER, chars INTEGER, preview TEXT
+      );
+      CREATE INDEX IF NOT EXISTS index_log_path ON index_log(path, id);
     `);
     if (!this.db.prepare('PRAGMA table_info(memories)').all().some((c) => c.name === 'profile_id')) {
       this.db.exec('ALTER TABLE memories ADD COLUMN profile_id INTEGER');
+    }
+    if (!this.db.prepare('PRAGMA table_info(messages)').all().some((c) => c.name === 'confidence')) {
+      this.db.exec('ALTER TABLE messages ADD COLUMN confidence INTEGER');
     }
     if (!this.db.prepare('SELECT 1 x FROM profiles LIMIT 1').get()) {
       this.db.prepare('INSERT INTO profiles(name, instructions, created_at) VALUES(?,?,?)').run(tr('prof.default'), '', Date.now());
@@ -158,14 +171,19 @@ class BrainDB {
     const own = this.db.prepare('SELECT 1 x FROM conversations WHERE id = ? AND profile_id = ?').get(conversationId, this.profileId);
     if (!own) return [];
     return this.db
-      .prepare('SELECT id, role, content, sources FROM messages WHERE conversation_id = ? ORDER BY id')
+      .prepare('SELECT id, role, content, sources, confidence FROM messages WHERE conversation_id = ? ORDER BY id')
       .all(conversationId)
       .map((m) => ({ ...m, sources: m.sources ? JSON.parse(m.sources) : [] }));
   }
-  addMessage(conversationId, role, content, sources = null) {
+  addMessage(conversationId, role, content, sources = null, confidence = null) {
     const now = Date.now();
-    this.db.prepare('INSERT INTO messages(conversation_id, role, content, sources, created_at) VALUES(?,?,?,?,?)').run(conversationId, role, content, sources && sources.length ? JSON.stringify(sources) : null, now);
+    this.db.prepare('INSERT INTO messages(conversation_id, role, content, sources, confidence, created_at) VALUES(?,?,?,?,?,?)').run(conversationId, role, content, sources && sources.length ? JSON.stringify(sources) : null, confidence, now);
     this.db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, conversationId);
+  }
+  /** Removes the trailing user message when it has no reply (a failed question that is being re-sent). */
+  dropUnansweredUser(conversationId, content) {
+    const last = this.getMessages(conversationId).pop();
+    if (last && last.role === 'user' && last.content === content) this.db.prepare('DELETE FROM messages WHERE id = ?').run(last.id);
   }
   renameConversation(id, title) {
     const t = String(title).trim().slice(0, 80);
@@ -218,6 +236,40 @@ class BrainDB {
     this.db.prepare('UPDATE files SET mtime = ?, size = ? WHERE path = ?').run(mtime, size, p);
   }
 
+  // ---------------------------------------------------------------- indexing log: what was indexed and what was captured
+  /** action: 'indexed' (new) | 'updated' | 'removed'. Keeps the newest 20,000 rows. */
+  logIndex({ path: p, action, kind = null, size = null, chunks = null, chars = null, preview = null }) {
+    try {
+      this.db.prepare('INSERT INTO index_log(ts,path,action,kind,size,chunks,chars,preview) VALUES(?,?,?,?,?,?,?,?)').run(Date.now(), p, action, kind, size, chunks, chars, preview && String(preview).slice(0, 400));
+      if (Math.random() < 0.01) this.db.exec('DELETE FROM index_log WHERE id < (SELECT MAX(id) - 20000 FROM index_log)');
+    } catch {
+      /* the log must never break indexing */
+    }
+  }
+  /** Files currently in the knowledge base, with what was captured (chunk and character counts) and the last action. */
+  listIndexedFiles(query = '', limit = 2000) {
+    const like = `%${String(query).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    return this.db
+      .prepare(
+        `SELECT f.path, f.kind, f.size, f.indexed_at AS at, COUNT(c.id) AS chunks, COALESCE(SUM(LENGTH(c.text)), 0) AS chars,
+           (SELECT action FROM index_log l WHERE l.path = f.path ORDER BY l.id DESC LIMIT 1) AS action
+         FROM files f LEFT JOIN chunks c ON c.path = f.path
+         WHERE f.path LIKE ? ESCAPE '\\' GROUP BY f.path ORDER BY f.indexed_at DESC LIMIT ?`,
+      )
+      .all(like, limit)
+      .map((r) => ({ ...r }));
+  }
+  /** The text that was captured from one file (its chunks, in order). */
+  fileChunks(p, limit = 300) {
+    return this.db.prepare('SELECT start_line AS start, end_line AS end, title, text FROM chunks WHERE path = ? ORDER BY id LIMIT ?').all(p, limit).map((r) => ({ ...r }));
+  }
+  listIndexLog(limit = 300) {
+    return this.db.prepare('SELECT id, ts, path, action, kind, size, chunks, chars, preview FROM index_log ORDER BY id DESC LIMIT ?').all(limit).map((r) => ({ ...r }));
+  }
+  clearIndexLog() {
+    this.db.exec('DELETE FROM index_log');
+  }
+
   removeFile(p) {
     this._tx(() => {
       this.db.prepare('DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE path = ?)').run(p);
@@ -225,6 +277,7 @@ class BrainDB {
       this.db.prepare('DELETE FROM files WHERE path = ?').run(p);
     });
     this._cache = null;
+    this._vecN = null;
   }
 
   /** Replaces a file's chunks. chunks: [{start,end,title,text}], vectors: number[][] (same length). */
@@ -254,6 +307,45 @@ class BrainDB {
       if (vectors.length && !dim) this._setMeta('dim', vectors[0].length);
     });
     this._cache = null;
+    this._vecN = null;
+  }
+
+  // ---------------------------------------------------------------- huge files: stored in blocks, keyword (FTS5) only, no vectors
+  beginStreamFile(p) {
+    this._tx(() => {
+      this.db.prepare('DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE path = ?)').run(p);
+      this.db.prepare('DELETE FROM chunks WHERE path = ?').run(p);
+      this.db.prepare('DELETE FROM files WHERE path = ?').run(p);
+    });
+  }
+  /** chunks: [{start,end,title,text}] -> one transaction per block. */
+  addStreamChunks(p, kind, chunks) {
+    this._tx(() => {
+      const ins = this.db.prepare('INSERT INTO chunks(path,kind,start_line,end_line,title,text,embedding) VALUES(?,?,?,?,?,?,NULL)');
+      const fts = this.db.prepare('INSERT INTO chunks_fts(rowid,text,title) VALUES(?,?,?)');
+      for (const c of chunks) {
+        const r = ins.run(p, kind, c.start, c.end, c.title || null, c.text);
+        fts.run(Number(r.lastInsertRowid), c.text, c.title || '');
+      }
+    });
+  }
+  /** Marks the file as indexed (only after every block was written, so an interrupted run is redone). */
+  finishStreamFile({ path: p, hash, mtime, size, kind = 'doc' }) {
+    this.db
+      .prepare(
+        'INSERT INTO files(path,hash,mtime,size,kind,indexed_at) VALUES(?,?,?,?,?,?) ' +
+          'ON CONFLICT(path) DO UPDATE SET hash=excluded.hash, mtime=excluded.mtime, size=excluded.size, kind=excluded.kind, indexed_at=excluded.indexed_at',
+      )
+      .run(p, hash, mtime ?? null, size ?? null, kind, Date.now());
+    this._cache = null;
+    this._vecN = null;
+  }
+  /** Chunks left behind by an interrupted run of a file that is gone or never finished. */
+  removeOrphanChunks() {
+    this._tx(() => {
+      this.db.exec('DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE path NOT IN (SELECT path FROM files))');
+      this.db.exec('DELETE FROM chunks WHERE path NOT IN (SELECT path FROM files)');
+    });
   }
 
   /** Clears the document index (memories are kept). */
@@ -262,6 +354,7 @@ class BrainDB {
       this.db.exec('DELETE FROM chunks_fts; DELETE FROM chunks; DELETE FROM files; DELETE FROM meta WHERE key = \'dim\';');
     });
     this._cache = null;
+    this._vecN = null;
   }
 
   stats() {
@@ -302,7 +395,40 @@ class BrainDB {
     return this._cache;
   }
 
+  _vecCount() {
+    if (this._vecN == null) this._vecN = Number(this.db.prepare('SELECT COUNT(*) n FROM chunks WHERE embedding IS NOT NULL').get().n) || 0;
+    return this._vecN;
+  }
+
+  /** Cosine top-n scanning SQLite in blocks: RAM stays at one block (a few MB) however many vectors there are. */
+  _vectorRankBlocks(queryVec, n) {
+    const dim = Number(this._getMeta('dim')) || 0;
+    const q = normalize(queryVec);
+    if (q.length !== dim) throw new Error(tr('db.dimQuery'));
+    const sel = this.db.prepare('SELECT id, embedding FROM chunks WHERE id > ? AND embedding IS NOT NULL ORDER BY id LIMIT ?');
+    const best = [];
+    let last = 0;
+    for (;;) {
+      const rows = sel.all(last, VECTOR_BLOCK);
+      if (!rows.length) break;
+      for (const r of rows) {
+        const v = fromBlob(r.embedding);
+        let dot = 0;
+        for (let j = 0; j < dim; j++) dot += v[j] * q[j];
+        if (best.length < n || dot > best[best.length - 1].cos) {
+          let k = best.length;
+          while (k > 0 && best[k - 1].cos < dot) k--;
+          best.splice(k, 0, { id: r.id, cos: dot });
+          if (best.length > n) best.pop();
+        }
+      }
+      last = rows[rows.length - 1].id;
+    }
+    return best;
+  }
+
   _vectorRank(queryVec, n) {
+    if (this._vecCount() > CACHE_MAX_VECTORS) return this._vectorRankBlocks(queryVec, n);
     const { ids, data, dim } = this._loadVectors();
     if (!ids.length) return [];
     const q = normalize(queryVec);

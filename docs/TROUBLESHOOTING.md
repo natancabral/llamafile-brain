@@ -4,7 +4,7 @@
 
 The app's messages follow the interface language; the English wording is used below.
 
-## "Could not connect to 127.0.0.1:8081"
+## "Could not connect to 127.0.0.1:8872"
 The **Embeddings** server is not running. In **Servers**, click **Start** (llamafile mode) or check the URL (external mode; Ollama: `http://127.0.0.1:11434`).
 
 ## "Pooling type 'none' is not OAI compatible"

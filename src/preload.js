@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('api', {
   saveSettings: call('settings:save'),
   pickFile: call('files:pick'),
   getMemory: call('sys:memory'),
+  getSysInfo: call('sys:info'),
   // folders
   addFolder: call('folders:add'),
   removeFolder: call('folders:remove'),
@@ -27,6 +28,14 @@ contextBridge.exposeInMainWorld('api', {
   // indexing
   runIndex: call('index:run'),
   cancelIndex: call('index:cancel'),
+  pauseIndex: call('index:pause'),
+  indexedFiles: call('idxlog:files'),
+  fileChunks: call('idxlog:chunks'),
+  indexActivity: call('idxlog:activity'),
+  clearIndexLog: call('idxlog:clear'),
+  listErrors: call('errors:list'),
+  countErrors: call('errors:count'),
+  clearErrors: call('errors:clear'),
   clearIndex: call('index:clear'),
   ocrStatus: call('ocr:status'),
   // optional dependencies
@@ -40,7 +49,7 @@ contextBridge.exposeInMainWorld('api', {
   // evaluation
   runEval: call('eval:run'),
   // chat
-  ask: (question, conversationId) => ipcRenderer.invoke('chat:ask', { question, conversationId }),
+  ask: (question, conversationId, retry = false) => ipcRenderer.invoke('chat:ask', { question, conversationId, retry }),
   chatsState: call('chats:state'),
   getChat: call('chats:get'),
   renameChat: call('chats:rename'),
