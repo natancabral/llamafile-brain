@@ -32,7 +32,7 @@ Serve para estudar, pesquisar, documentar projetos, organizar contratos e anota�
 - 🔎 **Busca híbrida em SQLite**: palavras-chave (FTS5/BM25) + vetores, fundidos por RRF — um único arquivo `brain.sqlite`.
 - 📁 **Você escolhe os locais**: pastas de documentos, pasta *brain* (suas notas, com prioridade) e onde fica o banco.
 - 🔄 **Reindexação automática** quando os arquivos mudam; indexação incremental.
-- 🗃️ **Arquivos enormes**: dumps `.sql` e bancos SQLite (até 4 GB) são lidos em streaming e pesquisados por palavra-chave com memória constante.
+- 🗃️ **Bancos SQLite e arquivos enormes**: arquivos `.sqlite .sqlite3 .db .db3` são lidos tabela por tabela (esquema + linhas). Bancos pequenos (até ~2.000 trechos) também recebem embeddings para busca semântica; os maiores e dumps `.sql` grandes (até 4 GB) são lidos em streaming e pesquisados por palavra-chave com memória constante.
 - 📄 **Muitos formatos**: texto e código, PDF, Word, Excel, PowerPoint, ODT/ODS/ODP, SQL, JSON, CSV; formatos antigos (`.doc` `.xls` `.ppt` `.rtf`) via LibreOffice.
 - 🖼️ **OCR** para PDFs escaneados e imagens (Tesseract).
 - 🧠 **Memória explícita**: `lembre que…`, `esqueça…`, `o que você lembra` + perfil fixo — você controla o que fica guardado (os comandos também funcionam em inglês e espanhol).
@@ -177,7 +177,8 @@ A memória é gravada **apenas** por esses comandos (nunca pelo modelo) e export
 | Tipo | Extensões |
 |---|---|
 | Texto e código | `.md .txt .rst .json .yml .toml .xml .csv .sql .js .ts .py .java .go .rs .php .c .cpp .sh .html .css` e outras |
-| Arquivos enormes (busca por palavra) | `.sql` acima de 1 MB e bancos SQLite `.sqlite .sqlite3 .db .db3` (até 4 GB, lidos em streaming) |
+| Bancos SQLite | `.sqlite .sqlite3 .db .db3`: os pequenos recebem vetores + busca por palavra; os grandes (até 4 GB) são lidos em streaming, só por palavra |
+| Dumps `.sql` enormes (busca por palavra) | `.sql` acima de 1 MB (até 4 GB, lidos em streaming) |
 | Documentos | `.pdf` (com OCR se escaneado), `.docx`, `.odt` |
 | Planilhas | `.xlsx`, `.xlsm`, `.ods` |
 | Apresentações | `.pptx`, `.odp` |

@@ -32,7 +32,7 @@ Use it to study, research, document projects, organize contracts and notes — a
 - 🔎 **Hybrid search in SQLite**: keywords (FTS5/BM25) + vectors, fused with RRF — a single `brain.sqlite` file.
 - 📁 **You choose the locations**: document folders, a *brain* folder (your notes, with priority) and where the database lives.
 - 🔄 **Automatic reindexing** when files change; incremental indexing.
-- 🗃️ **Huge files**: `.sql` dumps and SQLite databases (up to 4 GB) are read as a stream and searched by keyword with constant memory.
+- 🗃️ **SQLite databases and huge files**: `.sqlite .sqlite3 .db .db3` files are read table by table (schema + rows). Small databases (up to ~2,000 chunks) are also embedded for semantic search; bigger ones and large `.sql` dumps (up to 4 GB) are read as a stream and searched by keyword with constant memory.
 - 📄 **Many formats**: text and code, PDF, Word, Excel, PowerPoint, ODT/ODS/ODP, SQL, JSON, CSV; legacy formats (`.doc` `.xls` `.ppt` `.rtf`) through LibreOffice.
 - 🖼️ **OCR** for scanned PDFs and images (Tesseract).
 - 🧠 **Explicit memory**: `remember that…`, `forget…`, `what do you remember` + a fixed profile — you control what is stored (the commands also work in Portuguese and Spanish).
@@ -177,7 +177,8 @@ Memory is written **only** by these commands (never by the model) and exported t
 | Type | Extensions |
 |---|---|
 | Text and code | `.md .txt .rst .json .yml .toml .xml .csv .sql .js .ts .py .java .go .rs .php .c .cpp .sh .html .css` and more |
-| Huge files (keyword search) | `.sql` above 1 MB and SQLite databases `.sqlite .sqlite3 .db .db3` (up to 4 GB, read as a stream) |
+| SQLite databases | `.sqlite .sqlite3 .db .db3`: small ones get vectors + keyword search; big ones (up to 4 GB) are streamed, keyword-only |
+| Huge `.sql` dumps (keyword search) | `.sql` above 1 MB (up to 4 GB, read as a stream) |
 | Documents | `.pdf` (with OCR if scanned), `.docx`, `.odt` |
 | Spreadsheets | `.xlsx`, `.xlsm`, `.ods` |
 | Presentations | `.pptx`, `.odp` |

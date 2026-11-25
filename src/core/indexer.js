@@ -30,6 +30,8 @@ const MAX_BIG_BYTES = 20 * 1024 * 1024; // pdf / images
 // Huge files are read as a stream and stored keyword-only (FTS5, no embeddings): constant RAM, minutes instead of hours.
 const MAX_STREAM_BYTES = 4 * 1024 * 1024 * 1024; // 4 GB
 const SQLITE_EXT = new Set(['.sqlite', '.sqlite3', '.db', '.db3']);
+// A SQLite database that yields at most this many chunks also gets embeddings (semantic search over its rows); bigger ones stay keyword-only.
+const SQLITE_EMBED_MAX = 2000;
 const STREAM_CHUNK_CHARS = 1200;
 const STREAM_VERSION = 'v2'; // bump when the streaming readers change what they capture, so those files are re-read once
 const STREAM_BLOCK = 500; // chunks written per transaction
@@ -431,7 +433,7 @@ async function indexFolders(opts) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function indexInner({ roots, db, embedUrl, embedModel, ignore = [], ocr, onProgress, signal, batchSize = 16, errorLog, isPaused, exclude = [] }) {
+async function indexInner({ roots, db, embedUrl, embedModel, ignore = [], ocr, onProgress, signal, batchSize = 16, errorLog, isPaused, exclude = [], sqliteEmbedMax = SQLITE_EMBED_MAX }) {
   // Problems never stop the run: they are listed (file, size, reason) in the error log and in the result.
   const excluded = new Set(exclude.map((x) => path.resolve(x)));
   try {
@@ -515,6 +517,30 @@ async function indexInner({ roots, db, embedUrl, embedModel, ignore = [], ocr, o
   let done = 0;
   let indexed = 0;
   let unchanged = 0;
+  /** Embeds chunks in batches. Returns { vectors } or { skip: true } when the embedding server refuses a chunk's size. */
+  const embedChunks = async (file, chunks, stat) => {
+    const name = path.basename(file);
+    const vectors = [];
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      await gate({ done, total: todo.length, file, indexed, unchanged, failed: failed.length });
+      if (signal?.aborted) break;
+      const batch = chunks
+        .slice(i, i + batchSize)
+        .map((c) => `File: ${name}\n${c.title ? `Section: ${c.title}\n` : ''}\n${c.text}`.slice(0, 2000));
+      try {
+        vectors.push(...(await embed(embedUrl, batch, { model: embedModel, signal })));
+      } catch (e) {
+        // A chunk the embedding server refuses for its size only skips this file; any other error (server down...) still stops the run.
+        if (signal?.aborted || !/too large|batch size|exceeds|context (length|size)/i.test(String(e.message))) throw e;
+        report({ path: file, kind: 'embed_too_large', size: stat.size, detail: String(e.message).split('\n')[0] });
+        failed.push(`${name} (${tr('err.kind.embed_too_large')})`);
+        return { skip: true };
+      }
+      onProgress?.({ phase: 'indexing', done, total: todo.length, file, indexed, unchanged, failed: failed.length }); // batch finished = progress was made
+    }
+    return { vectors };
+  };
+
   for (const { file, kind, stat, stream } of todo) {
     if (signal?.aborted) break;
     await gate({ done, total: todo.length, file, indexed, unchanged, failed: failed.length });
@@ -523,7 +549,8 @@ async function indexInner({ roots, db, embedUrl, embedModel, ignore = [], ocr, o
     done++;
 
     const meta = db.getFile(file);
-    const staleStream = !!meta && stream && !String(meta.hash).startsWith(`stream:${STREAM_VERSION}:`); // streamed with an older reader: redo
+    const oldHash = String(meta?.hash || '');
+    const staleStream = !!meta && stream && !oldHash.startsWith(`stream:${STREAM_VERSION}:`) && !oldHash.startsWith(`sqlite:${STREAM_VERSION}:`); // streamed with an older reader: redo
     if (!staleStream && meta && meta.mtime === stat.mtimeMs && meta.size === stat.size && meta.kind === kind) {
       unchanged++;
       errorLog?.resolve(file);
@@ -531,14 +558,50 @@ async function indexInner({ roots, db, embedUrl, embedModel, ignore = [], ocr, o
     }
     if (stream) {
       // keyword-only, block by block: pausing, cancelling and the idle watchdog all work between blocks
-      const gen = SQLITE_EXT.has(path.extname(file).toLowerCase()) ? sqliteChunks(file, signal) : sqlChunks(file, signal);
+      const isDb = SQLITE_EXT.has(path.extname(file).toLowerCase());
+      const gen = isDb ? sqliteChunks(file, signal) : sqlChunks(file, signal);
+      let source = gen;
       let block = [];
       let n = 0;
       let chars = 0;
       let preview = '';
       try {
+        if (isDb && sqliteEmbedMax > 0) {
+          // Peek: a small database is embedded like any document; a big one continues as a keyword-only stream.
+          const it = gen[Symbol.asyncIterator]();
+          const head = [];
+          let more = false;
+          for (;;) {
+            const r = await it.next();
+            if (r.done) break;
+            head.push(r.value);
+            if (head.length > sqliteEmbedMax) {
+              more = true;
+              break;
+            }
+          }
+          if (!more && head.length && !signal?.aborted) {
+            const emb = await embedChunks(file, head, stat);
+            if (signal?.aborted) break;
+            if (!emb.skip) {
+              db.addFile({ path: file, hash: `sqlite:${STREAM_VERSION}:${stat.size}:${stat.mtimeMs}`, mtime: stat.mtimeMs, size: stat.size, kind, chunks: head, vectors: emb.vectors });
+              db.logIndex({ path: file, action: meta ? 'updated' : 'indexed', kind, size: stat.size, chunks: head.length, chars: head.reduce((a, c) => a + c.text.length, 0), preview: head.slice(0, 4).map((c) => c.text.replace(/\s+/g, ' ')).join(' ').slice(0, 400) });
+              errorLog?.resolve(file);
+              indexed++;
+            }
+            continue;
+          }
+          source = (async function* () {
+            yield* head;
+            for (;;) {
+              const r = await it.next();
+              if (r.done) return;
+              yield r.value;
+            }
+          })();
+        }
         db.beginStreamFile(file);
-        for await (const c of gen) {
+        for await (const c of source) {
           block.push(c);
           n++;
           chars += c.text.length;
@@ -604,28 +667,10 @@ async function indexInner({ roots, db, embedUrl, embedModel, ignore = [], ocr, o
     const chunks = chunkDocument(text, file);
     if (!chunks.length) continue;
     const name = path.basename(file);
-    const vectors = [];
-    let skipFile = false;
-    for (let i = 0; i < chunks.length; i += batchSize) {
-      await gate({ done, total: todo.length, file, indexed, unchanged, failed: failed.length });
-      if (signal?.aborted) break;
-      const batch = chunks
-        .slice(i, i + batchSize)
-        .map((c) => `File: ${name}\n${c.title ? `Section: ${c.title}\n` : ''}\n${c.text}`.slice(0, 2000));
-      try {
-        vectors.push(...(await embed(embedUrl, batch, { model: embedModel, signal })));
-      } catch (e) {
-        // A chunk the embedding server refuses for its size only skips this file; any other error (server down...) still stops the run.
-        if (signal?.aborted || !/too large|batch size|exceeds|context (length|size)/i.test(String(e.message))) throw e;
-        report({ path: file, kind: 'embed_too_large', size: stat.size, detail: String(e.message).split('\n')[0] });
-        failed.push(`${name} (${tr('err.kind.embed_too_large')})`);
-        skipFile = true;
-        break;
-      }
-      onProgress?.({ phase: 'indexing', done, total: todo.length, file, indexed, unchanged, failed: failed.length }); // batch finished = progress was made
-    }
-    if (skipFile) continue;
+    const emb = await embedChunks(file, chunks, stat);
+    if (emb.skip) continue;
     if (signal?.aborted) break;
+    const { vectors } = emb;
     db.addFile({ path: file, hash, mtime: stat.mtimeMs, size: stat.size, kind, chunks, vectors });
     db.logIndex({ path: file, action: meta ? 'updated' : 'indexed', kind, size: stat.size, chunks: chunks.length, chars: text.length, preview: text.replace(/\s+/g, ' ').trim() });
     errorLog?.resolve(file);

@@ -526,7 +526,7 @@ test('indexer: big .sql and SQLite files are streamed keyword-only (no embedding
 
   const db = new BrainDB(':memory:');
   const elog = new (require('../src/core/errorlog').ErrorLog)(path.join(tmpdir(), 'e.sqlite'));
-  const r = await indexFolders({ roots: [{ dir: docs, kind: 'doc' }], db, embedUrl: mock.url, errorLog: elog });
+  const r = await indexFolders({ roots: [{ dir: docs, kind: 'doc' }], db, embedUrl: mock.url, errorLog: elog, sqliteEmbedMax: 3 }); // 3: this database is "big"
   assert.equal(r.indexed, 2);
   assert.equal(mock.seen.embedCalls, 0, 'no embeddings for streamed files');
   assert.equal(elog.count(), 0);
@@ -534,7 +534,7 @@ test('indexer: big .sql and SQLite files are streamed keyword-only (no embedding
   assert.ok(hit.length && /unicornio raro/.test(hit[0].text) && hit[0].path.endsWith('dados.sqlite'));
   assert.ok(db.search({ queryText: 'clientes', limit: 3 }).some((h) => h.path === sql));
   // unchanged on the second run
-  const r2 = await indexFolders({ roots: [{ dir: docs, kind: 'doc' }], db, embedUrl: mock.url });
+  const r2 = await indexFolders({ roots: [{ dir: docs, kind: 'doc' }], db, embedUrl: mock.url, sqliteEmbedMax: 3 });
   assert.equal(r2.unchanged, 2);
   elog.close();
   db.close();
@@ -601,6 +601,31 @@ test('indexer: FTS shadow tables of a SQLite file are skipped; keyword-only evid
   assert.ok(!/knowledge_(content|data|idx|docsize|config)/.test(titles.replace(/schema: table knowledge_\w+/g, '')), titles);
   assert.ok(assessEvidence([{ cos: 0.2 }, { bm25: -9 }]).usable, 'strong keyword hit without a vector counts');
   assert.ok(!assessEvidence([{ cos: 0.2 }, { bm25: -0.4 }]).usable);
+  db.close();
+  mock.server.close();
+});
+
+test('indexer: a small SQLite database is embedded (semantic search over its rows); unchanged on re-run', async () => {
+  const { DatabaseSync } = require('node:sqlite');
+  const mock = await startMock();
+  const docs = tmpdir();
+  const f = path.join(docs, 'faq.sqlite3');
+  const sdb = new DatabaseSync(f);
+  sdb.exec('CREATE TABLE faq (id INTEGER PRIMARY KEY, pergunta TEXT, resposta TEXT)');
+  const ins = sdb.prepare('INSERT INTO faq(pergunta, resposta) VALUES (?, ?)');
+  ins.run('Qual o prazo da garantia?', 'A garantia cobre defeitos por 12 meses.');
+  ins.run('Como acionar o suporte?', 'Pelo telefone ou pelo site, com a nota fiscal.');
+  sdb.close();
+  const db = new BrainDB(':memory:');
+  const r = await indexFolders({ roots: [{ dir: docs, kind: 'doc' }], db, embedUrl: mock.url });
+  assert.equal(r.indexed, 1);
+  assert.ok(mock.seen.embedCalls > 0, 'rows were sent to the embedding model');
+  assert.ok(db.db.prepare('SELECT COUNT(*) n FROM chunks WHERE embedding IS NOT NULL').get().n > 0, 'stored with vectors');
+  assert.ok(db.search({ queryText: 'garantia', limit: 3 }).some((h) => h.path === f && /12 meses/.test(h.text)));
+  const calls = mock.seen.embedCalls;
+  const r2 = await indexFolders({ roots: [{ dir: docs, kind: 'doc' }], db, embedUrl: mock.url });
+  assert.equal(r2.unchanged, 1);
+  assert.equal(mock.seen.embedCalls, calls, 'not re-embedded when the file did not change');
   db.close();
   mock.server.close();
 });
